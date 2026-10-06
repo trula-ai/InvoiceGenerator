@@ -29,9 +29,9 @@ const TRUST = [
  */
 export function AuthShell({ title, description, children, footer }: AuthShellProps) {
   return (
-    <main className="grid min-h-dvh flex-1 lg:grid-cols-[1.1fr_1fr]">
-      {/* Brand panel */}
-      <section className="relative hidden overflow-hidden bg-primary text-primary-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
+    <main className="grid min-h-dvh flex-1 lg:h-dvh lg:grid-cols-[1.1fr_1fr] lg:overflow-hidden">
+      {/* Brand panel: fixed to the viewport height; the feature list is dropped on short screens so it never scrolls. */}
+      <section className="relative hidden min-h-0 overflow-hidden bg-primary text-primary-foreground lg:flex lg:flex-col lg:justify-between lg:p-10 xl:p-12">
         <div aria-hidden className="pointer-events-none absolute inset-0">
           <div className="absolute -top-32 -left-24 size-[28rem] rounded-full bg-white/10 blur-3xl motion-safe:animate-[auth-blob_18s_ease-in-out_infinite]" />
           <div className="absolute -right-24 bottom-0 size-[24rem] rounded-full bg-black/20 blur-3xl motion-safe:animate-[auth-blob_22s_ease-in-out_infinite_reverse]" />
@@ -47,9 +47,9 @@ export function AuthShell({ title, description, children, footer }: AuthShellPro
 
         <BrandMark className="relative" />
 
-        <div className="relative my-10 flex flex-col gap-10">
+        <div className="relative my-6 flex min-h-0 flex-col gap-6 xl:my-8 xl:gap-8">
           <div className="animate-in fade-in-0 slide-in-from-bottom-4 duration-700">
-            <h2 className="max-w-md text-4xl font-semibold tracking-tight text-balance">Invoicing that looks as professional as your work.</h2>
+            <h2 className="max-w-md text-3xl font-semibold tracking-tight text-balance xl:text-4xl">Invoicing that looks as professional as your work.</h2>
             <p className="mt-3 max-w-md text-base text-primary-foreground/75">
               Create, send and track invoices from one place, with the tax and currency details taken care of.
             </p>
@@ -57,7 +57,7 @@ export function AuthShell({ title, description, children, footer }: AuthShellPro
 
           <InvoicePreview />
 
-          <ul className="grid gap-4 animate-in fade-in-0 slide-in-from-bottom-4 delay-200 duration-700">
+          <ul className="grid gap-3 animate-in fade-in-0 slide-in-from-bottom-4 delay-200 duration-700 [@media(max-height:900px)]:hidden">
             {HIGHLIGHTS.map((h, i) => (
               <li
                 key={h.title}
@@ -86,7 +86,7 @@ export function AuthShell({ title, description, children, footer }: AuthShellPro
       </section>
 
       {/* Form panel */}
-      <section className="relative flex items-center justify-center bg-muted/40 px-4 py-12 sm:px-8">
+      <section className="relative flex min-h-0 items-center justify-center bg-muted/40 px-4 py-8 sm:px-8 lg:overflow-y-auto">
         <div className="w-full max-w-sm animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
           <BrandMark className="mb-8 lg:hidden" compact />
           <div className="rounded-xl bg-card p-6 shadow-neu ring-1 ring-foreground/10 sm:p-8">
