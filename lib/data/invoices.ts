@@ -202,6 +202,7 @@ async function buildInvoiceRow(business: Business, values: InvoiceFormValues) {
     gstEnabled: gstApplied,
     isInterState,
     exchangeRate: values.exchangeRate,
+    roundTotals: business.roundTotals,
   });
 
   const row = {
@@ -209,6 +210,9 @@ async function buildInvoiceRow(business: Business, values: InvoiceFormValues) {
     invoiceType: values.invoiceType,
     issueDate: values.issueDate,
     dueDate: values.dueDate,
+    poNumber: values.poNumber ?? null,
+    reference: values.reference ?? null,
+    shipToAddress: values.shipToAddress ?? null,
     currency: values.currency,
     exchangeRate: values.exchangeRate,
     exchangeRateSource: values.exchangeRateSource,
@@ -227,6 +231,7 @@ async function buildInvoiceRow(business: Business, values: InvoiceFormValues) {
     sgstAmount: calc.sgstAmount,
     igstAmount: calc.igstAmount,
     taxAmount: calc.taxAmount,
+    roundOffAmount: calc.roundOffAmount,
     total: calc.total,
     totalInr: calc.totalInr,
     notes: values.notes ?? null,
@@ -235,6 +240,7 @@ async function buildInvoiceRow(business: Business, values: InvoiceFormValues) {
 
   const itemRows = values.items.map((item, i) => ({
     sortOrder: i,
+    itemId: item.itemId ?? null,
     description: item.description,
     hsnSac: item.hsnSac ?? null,
     quantity: item.quantity,

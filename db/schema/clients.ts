@@ -34,6 +34,9 @@ export const clients = pgTable(
     postalCode: varchar({ length: 20 }),
     country: varchar({ length: 100 }).notNull().default("India"),
 
+    /** Delivery address when goods go somewhere other than the billing address (multi-line). */
+    shippingAddress: text(),
+
     /** Preferred invoicing currency for this client (ISO 4217). */
     currency: char({ length: 3 }).notNull().default("INR"),
     notes: text(),

@@ -44,6 +44,14 @@ export const businesses = pgTable("businesses", {
   /** Small PNG/JPEG logo as a data URL, printed on PDFs and the public invoice page. */
   logoDataUrl: text(),
 
+  // --- Document presentation ---------------------------------------------
+  /** Round the invoice total to the nearest whole currency unit (round-off line). */
+  roundTotals: boolean().notNull().default(false),
+  /** Signature image (PNG/JPEG data URL) printed in the authorised-signatory block. */
+  signatureDataUrl: text(),
+  /** Name printed under the signature, e.g. "Priya Sharma, Director". */
+  signatoryName: varchar({ length: 120 }),
+
   // --- Automatic payment reminders ----------------------------------------
   /** Master switch for scheduled reminder emails (lib/email/due-reminders.ts). */
   remindersEnabled: boolean().notNull().default(true),

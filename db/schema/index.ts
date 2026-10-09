@@ -17,6 +17,7 @@ export * from "./businesses";
 export * from "./users";
 export * from "./password-reset-tokens";
 export * from "./clients";
+export * from "./items";
 export * from "./invoices";
 export * from "./payments";
 export * from "./email-logs";

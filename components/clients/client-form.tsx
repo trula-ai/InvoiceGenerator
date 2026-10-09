@@ -42,6 +42,7 @@ export function ClientForm({ mode, clientId, defaultValues, defaultCurrency }: C
       stateCode: "",
       postalCode: "",
       country: "India",
+      shippingAddress: "",
       currency: defaultCurrency,
       notes: "",
       autoReminders: true,
@@ -191,6 +192,19 @@ export function ClientForm({ mode, clientId, defaultValues, defaultCurrency }: C
                 )}
               </div>
             </FieldGroup>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Shipping address</CardTitle>
+            <CardDescription>Only if goods are delivered somewhere other than the billing address. Prefills &ldquo;Ship to&rdquo; on new invoices.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Field data-invalid={!!errors.shippingAddress}>
+              <Textarea id="shippingAddress" rows={4} placeholder={"Warehouse name\nStreet\nCity, State, PIN"} {...form.register("shippingAddress")} />
+              <FieldError errors={[errors.shippingAddress]} />
+            </Field>
           </CardContent>
         </Card>
       </div>

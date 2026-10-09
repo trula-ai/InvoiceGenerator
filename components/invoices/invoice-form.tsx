@@ -21,12 +21,16 @@ import {
   type SelectOption,
 } from "@/components/shared/options";
 import { SelectField } from "@/components/shared/select-field";
+import { ItemSuggestInput } from "@/components/invoices/item-suggest-input";
 import { createInvoiceAction, fetchExchangeRateAction, updateInvoiceAction } from "@/lib/actions/invoices";
 import type { RateQuote } from "@/lib/data/exchange-rates";
+import type { ItemOption } from "@/lib/data/items";
+import { amountInWords } from "@/lib/amount-in-words";
 import { calculateInvoice } from "@/lib/calculations";
 import { BASE_CURRENCY } from "@/lib/currency";
 import { addDaysIso, todayIso } from "@/lib/fiscal-year";
 import { formatCurrency, formatDateTime, formatRate } from "@/lib/format";
+import { isZero } from "@/lib/money";
 import { invoiceSchema, type InvoiceFormInput, type InvoiceFormValues } from "@/lib/validation/invoice";
 
 export interface ClientOption {
@@ -38,6 +42,7 @@ export interface ClientOption {
   gstin: string | null;
   email: string | null;
   country: string;
+  shippingAddress: string | null;
 }
 
 export interface BusinessContext {
@@ -47,6 +52,7 @@ export interface BusinessContext {
   paymentTermsDays: number;
   invoiceNotes: string | null;
   invoiceTerms: string | null;
+  roundTotals: boolean;
 }
 
 interface InvoiceFormProps {
@@ -55,6 +61,8 @@ interface InvoiceFormProps {
   /** Status of the invoice being edited (controls which submit buttons show). */
   currentStatus?: string;
   clients: ClientOption[];
+  /** Saved items offered by the description autocomplete. */
+  catalog: ItemOption[];
   business: BusinessContext;
   defaultValues?: InvoiceFormInput;
   initialClientId?: string;
@@ -67,7 +75,17 @@ function num(value: string | undefined): string {
   return value && /^\d+(\.\d+)?$/.test(value) ? value : "0";
 }
 
-export function InvoiceForm({ mode, invoiceId, currentStatus, clients, business, defaultValues, initialClientId, initialRate }: InvoiceFormProps) {
+const emptyItem = (taxRate: string): InvoiceFormInput["items"][number] => ({
+  itemId: "",
+  description: "",
+  hsnSac: "",
+  quantity: "1",
+  unit: "",
+  unitPrice: "",
+  taxRate,
+});
+
+export function InvoiceForm({ mode, invoiceId, currentStatus, clients, catalog, business, defaultValues, initialClientId, initialRate }: InvoiceFormProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [rateInfo, setRateInfo] = useState<{ fetchedAt: Date | null; stale: boolean } | null>(
     initialRate && initialRate.source === "api" ? { fetchedAt: initialRate.fetchedAt, stale: initialRate.stale } : null,
@@ -88,6 +106,9 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, business,
       invoiceType: initialClient?.type ?? "b2b",
       issueDate: today,
       dueDate: addDaysIso(today, business.paymentTermsDays),
+      poNumber: "",
+      reference: "",
+      shipToAddress: initialClient?.shippingAddress ?? "",
       currency: initialCurrency,
       exchangeRate: initialCurrency === BASE_CURRENCY ? "1" : (initialRate?.rate ?? ""),
       exchangeRateSource: initialCurrency === BASE_CURRENCY ? "base" : initialRate ? "api" : "manual",
@@ -96,7 +117,7 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, business,
       discountValue: "",
       notes: business.invoiceNotes ?? "",
       terms: business.invoiceTerms ?? "",
-      items: [{ description: "", hsnSac: "", quantity: "1", unit: "", unitPrice: "", taxRate: business.gstEnabled ? "18" : "0" }],
+      items: [emptyItem(business.gstEnabled ? "18" : "0")],
       status: "pending",
     },
   });
@@ -123,8 +144,9 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, business,
       gstEnabled: business.gstEnabled,
       isInterState,
       exchangeRate: num(values.exchangeRate) === "0" ? "1" : num(values.exchangeRate),
+      roundTotals: business.roundTotals,
     });
-  }, [values.items, values.discountType, values.discountValue, values.exchangeRate, business.gstEnabled, isInterState]);
+  }, [values.items, values.discountType, values.discountValue, values.exchangeRate, business.gstEnabled, business.roundTotals, isInterState]);
 
   function loadRate(code: string) {
     if (code === BASE_CURRENCY) {
@@ -149,10 +171,16 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, business,
   }
 
   function onClientChange(clientId: string) {
+    const previous = clients.find((c) => c.id === getValues("clientId"));
     const client = clients.find((c) => c.id === clientId);
     setValue("clientId", clientId, { shouldValidate: true });
     if (!client) return;
     setValue("invoiceType", client.type);
+    // Prefill "Ship to" from the client, but never overwrite an address the user typed.
+    const currentShipTo = (getValues("shipToAddress") ?? "").trim();
+    if (!currentShipTo || currentShipTo === (previous?.shippingAddress ?? "").trim()) {
+      setValue("shipToAddress", client.shippingAddress ?? "");
+    }
     if (business.gstEnabled) setValue("placeOfSupplyCode", client.stateCode ?? business.stateCode ?? "");
     if (client.currency !== getValues("currency")) {
       setValue("currency", client.currency);
@@ -170,6 +198,17 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, business,
     } else {
       setValue("exchangeRateSource", "manual");
     }
+  }
+
+  /** Copies a catalog item onto a line. The line keeps its own copy of every value. */
+  function applyCatalogItem(index: number, item: ItemOption) {
+    const description = item.description ? `${item.name}\n${item.description}` : item.name;
+    setValue(`items.${index}.itemId`, item.id);
+    setValue(`items.${index}.description`, description, { shouldValidate: true });
+    setValue(`items.${index}.hsnSac`, item.hsnSac ?? "");
+    setValue(`items.${index}.unit`, item.unit ?? "");
+    setValue(`items.${index}.unitPrice`, item.unitPrice, { shouldValidate: true });
+    setValue(`items.${index}.taxRate`, String(Number(item.taxRate)), { shouldValidate: true });
   }
 
   function toggleManual(checked: boolean) {
@@ -277,6 +316,22 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, business,
                   />
                   <FieldError errors={[errors.dueDate]} />
                 </Field>
+                <Field data-invalid={!!errors.poNumber}>
+                  <FieldLabel htmlFor="poNumber">PO number</FieldLabel>
+                  <Input id="poNumber" placeholder="Client's purchase order" {...register("poNumber")} />
+                  <FieldError errors={[errors.poNumber]} />
+                </Field>
+                <Field data-invalid={!!errors.reference}>
+                  <FieldLabel htmlFor="reference">Reference</FieldLabel>
+                  <Input id="reference" placeholder="Project, contract or challan" {...register("reference")} />
+                  <FieldError errors={[errors.reference]} />
+                </Field>
+                <Field data-invalid={!!errors.shipToAddress} className="sm:col-span-2">
+                  <FieldLabel htmlFor="shipToAddress">Ship to</FieldLabel>
+                  <Textarea id="shipToAddress" rows={3} placeholder={"Delivery address, one line per row"} {...register("shipToAddress")} />
+                  <FieldDescription>Leave blank when goods or services are delivered to the billing address.</FieldDescription>
+                  <FieldError errors={[errors.shipToAddress]} />
+                </Field>
               </div>
             </FieldGroup>
           </CardContent>
@@ -286,7 +341,10 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, business,
         <Card>
           <CardHeader>
             <CardTitle>Items</CardTitle>
-            <CardDescription>Amounts are in {currency}. Tax is calculated per line.</CardDescription>
+            <CardDescription>
+              Amounts are in {currency}. Tax is calculated per line.{" "}
+              {catalog.length ? "Start typing a description to pick from your saved items." : "Save frequently used items under Items to pick them here."}
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="hidden grid-cols-[1fr_90px_80px_110px_70px_110px_32px] gap-2 px-1 text-xs font-medium text-muted-foreground md:grid">
@@ -303,7 +361,26 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, business,
               return (
                 <div key={field.id} className="grid gap-2 rounded-lg border p-3 md:grid-cols-[1fr_90px_80px_110px_70px_110px_32px] md:items-start md:border-0 md:p-0">
                   <Field data-invalid={!!itemErrors?.description}>
-                    <Input placeholder="Description" aria-label="Description" {...register(`items.${index}.description` as const)} />
+                    <Controller
+                      control={control}
+                      name={`items.${index}.description` as const}
+                      render={({ field: f }) => (
+                        <ItemSuggestInput
+                          value={f.value ?? ""}
+                          onChange={(text) => {
+                            f.onChange(text);
+                            // Hand-edited text is no longer the catalog item verbatim.
+                            if (getValues(`items.${index}.itemId`)) setValue(`items.${index}.itemId`, "");
+                          }}
+                          onPick={(item) => applyCatalogItem(index, item)}
+                          catalog={catalog}
+                          currency={currency}
+                          invalid={!!itemErrors?.description}
+                          placeholder="Description"
+                        />
+                      )}
+                    />
+                    <input type="hidden" {...register(`items.${index}.itemId` as const)} />
                     <FieldError errors={[itemErrors?.description]} />
                   </Field>
                   <Field data-invalid={!!itemErrors?.hsnSac}>
@@ -343,7 +420,7 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, business,
               variant="outline"
               size="sm"
               className="self-start"
-              onClick={() => items.append({ description: "", hsnSac: "", quantity: "1", unit: "", unitPrice: "", taxRate: business.gstEnabled ? "18" : "0" })}
+              onClick={() => items.append(emptyItem(business.gstEnabled ? "18" : "0"))}
             >
               <Plus /> Add item
             </Button>
@@ -463,10 +540,14 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, business,
             ) : (
               <SummaryRow label="Tax" value={formatCurrency(totals.taxAmount, currency)} />
             )}
+            {business.roundTotals && !isZero(totals.roundOffAmount) ? (
+              <SummaryRow label="Round off" value={`${Number(totals.roundOffAmount) > 0 ? "+" : "-"} ${formatCurrency(Math.abs(Number(totals.roundOffAmount)), currency)}`} />
+            ) : null}
             <div className="mt-2 flex items-center justify-between border-t pt-3 text-base font-semibold">
               <span>Total</span>
               <span>{formatCurrency(totals.total, currency)}</span>
             </div>
+            {!isZero(totals.total) ? <p className="text-xs text-muted-foreground">{amountInWords(totals.total, currency)}</p> : null}
             {currency !== BASE_CURRENCY ? (
               <SummaryRow label={`Equivalent in ${BASE_CURRENCY}`} value={formatCurrency(totals.totalInr, BASE_CURRENCY)} muted />
             ) : null}

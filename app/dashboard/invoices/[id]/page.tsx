@@ -12,11 +12,12 @@ import { InvoiceActions } from "@/components/invoices/invoice-actions";
 import { DeletePaymentButton } from "@/components/payments/delete-payment-button";
 import { EmailReceiptButton } from "@/components/payments/email-receipt-button";
 import { requireUser } from "@/lib/auth/current-user";
+import { amountInWords } from "@/lib/amount-in-words";
 import { BASE_CURRENCY } from "@/lib/currency";
 import { getInvoiceDetail, isInvoiceEditable } from "@/lib/data/invoices";
 import { isEmailConfigured } from "@/lib/email/provider";
 import { formatCurrency, formatDate, formatDateTime, formatRate } from "@/lib/format";
-import { isZero } from "@/lib/money";
+import { D, isZero } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validation/payment";
 
 export const metadata: Metadata = { title: "Invoice" };
@@ -31,6 +32,7 @@ export default async function InvoiceDetailPage({ params }: PageProps<"/dashboar
   const cur = invoice.currency;
   const showGst = invoice.gstApplied;
   const clientAddress = [client.addressLine1, client.addressLine2, [client.city, client.state, client.postalCode].filter(Boolean).join(", "), client.country].filter(Boolean);
+  const roundOff = D(invoice.roundOffAmount);
 
   return (
     <>
@@ -81,6 +83,12 @@ export default async function InvoiceDetailPage({ params }: PageProps<"/dashboar
             ))}
             {client.email ? <p className="text-muted-foreground">{client.email}</p> : null}
             {showGst && invoice.clientGstin ? <p className="mt-2 font-mono text-xs">GSTIN {invoice.clientGstin}</p> : null}
+            {invoice.shipToAddress ? (
+              <div className="mt-3 border-t pt-3">
+                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Ship to</p>
+                <p className="whitespace-pre-line text-muted-foreground">{invoice.shipToAddress}</p>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -89,6 +97,8 @@ export default async function InvoiceDetailPage({ params }: PageProps<"/dashboar
             <CardTitle>Tax & currency</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2 text-sm">
+            {invoice.poNumber ? <Meta label="PO number" value={invoice.poNumber} /> : null}
+            {invoice.reference ? <Meta label="Reference" value={invoice.reference} /> : null}
             <Meta label="Currency" value={cur} />
             {cur !== BASE_CURRENCY ? (
               <Meta label="Exchange rate" value={`1 ${cur} = ${formatRate(invoice.exchangeRate)} ${BASE_CURRENCY} (${invoice.exchangeRateSource})`} />
@@ -170,10 +180,12 @@ export default async function InvoiceDetailPage({ params }: PageProps<"/dashboar
             ) : !isZero(invoice.taxAmount) ? (
               <Meta label="Tax" value={formatCurrency(invoice.taxAmount, cur)} />
             ) : null}
+            {!roundOff.isZero() ? <Meta label="Round off" value={`${roundOff.greaterThan(0) ? "+" : "-"} ${formatCurrency(roundOff.abs().toFixed(2), cur)}`} /> : null}
             <div className="flex items-center justify-between border-t pt-2 text-base font-semibold">
               <span>Total</span>
               <span>{formatCurrency(invoice.total, cur)}</span>
             </div>
+            <p className="text-xs text-muted-foreground">{amountInWords(invoice.total, cur)}</p>
           </div>
 
           {invoice.notes || invoice.terms ? (

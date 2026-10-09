@@ -2,6 +2,15 @@ import { z } from "zod";
 
 import { currencyCode, optionalEmail, optionalGstin, optionalStateCode, optionalText } from "./common";
 
+/** Optional PNG/JPEG data URL of at most ~300 KB. Empty string clears it. */
+const imageDataUrl = (label: string) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v ? v : undefined))
+    .refine((v) => v === undefined || /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v), "Upload a PNG or JPEG image")
+    .refine((v) => v === undefined || v.length <= 400_000, `${label} must be smaller than 300 KB`);
+
 export const businessSettingsSchema = z
   .object({
     name: z.string().trim().min(1, "Enter the business name").max(200),
@@ -30,12 +39,12 @@ export const businessSettingsSchema = z
     invoiceNotes: optionalText(2000),
     invoiceTerms: optionalText(4000),
     /** Data URL (image/png or image/jpeg), at most ~300 KB of base64. Empty string clears it. */
-    logoDataUrl: z
-      .string()
-      .optional()
-      .transform((v) => (v ? v : undefined))
-      .refine((v) => v === undefined || /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v), "Upload a PNG or JPEG image")
-      .refine((v) => v === undefined || v.length <= 400_000, "Logo must be smaller than 300 KB"),
+    logoDataUrl: imageDataUrl("Logo"),
+    /** Round invoice totals to the nearest whole unit and print a round-off line. */
+    roundTotals: z.boolean().default(false),
+    /** Signature image for the authorised-signatory block; same constraints as the logo. */
+    signatureDataUrl: imageDataUrl("Signature"),
+    signatoryName: optionalText(120),
     /** Automatic payment reminder schedule. */
     remindersEnabled: z.boolean().default(true),
     reminderDaysBefore: z.coerce.number().int().min(0, "Use 0 to disable").max(60, "At most 60 days"),

@@ -1,9 +1,11 @@
 import { Document, Image, Page, Text, View } from "@react-pdf/renderer";
 
+import { amountInWords } from "@/lib/amount-in-words";
 import type { InvoiceDetail } from "@/lib/data/invoices";
 import { formatAmount, formatCurrencyCode, formatDate, formatRate, INVOICE_STATUS_LABELS } from "@/lib/format";
 import { BASE_CURRENCY } from "@/lib/currency";
-import { isZero } from "@/lib/money";
+import { summariseByHsn } from "@/lib/hsn-summary";
+import { D, isZero } from "@/lib/money";
 
 import { pdfStyles as s } from "./styles";
 
@@ -19,12 +21,25 @@ function addressLines(a: {
   return [a.addressLine1, a.addressLine2, cityLine, a.country].filter((l): l is string => !!l && l.trim() !== "");
 }
 
+/** Splits a multi-line free-text address into trimmed, non-empty lines. */
+function textLines(value: string | null | undefined): string[] {
+  return (value ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
 export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
   const { invoice, client, business, items } = detail;
   const cur = invoice.currency;
   const showGst = invoice.gstApplied;
   const showDiscount = !isZero(invoice.discountAmount);
+  const showRoundOff = !isZero(invoice.roundOffAmount);
+  const roundOffPositive = D(invoice.roundOffAmount).greaterThan(0);
   const title = invoice.invoiceType === "b2b" && showGst ? "TAX INVOICE" : "INVOICE";
+  const shipTo = textLines(invoice.shipToAddress);
+  const hsnRows = showGst ? summariseByHsn(items, invoice.isInterState) : [];
+  const showSignatory = showGst || !!business.signatureDataUrl || !!business.signatoryName;
 
   return (
     <Document title={`${invoice.invoiceNumber}`} author={business.name}>
@@ -52,7 +67,55 @@ export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
           </View>
         </View>
 
-        {/* Parties + meta */}
+        {/* Meta strip */}
+        <View style={s.metaStrip}>
+          <View style={s.metaCell}>
+            <Text style={s.label}>Issue date</Text>
+            <Text>{formatDate(invoice.issueDate)}</Text>
+          </View>
+          <View style={s.metaCell}>
+            <Text style={s.label}>Due date</Text>
+            <Text>{formatDate(invoice.dueDate)}</Text>
+          </View>
+          <View style={s.metaCell}>
+            <Text style={s.label}>Invoice type</Text>
+            <Text>{invoice.invoiceType.toUpperCase()}</Text>
+          </View>
+          <View style={s.metaCell}>
+            <Text style={s.label}>Currency</Text>
+            <Text>{cur}</Text>
+          </View>
+          {showGst && invoice.placeOfSupply ? (
+            <View style={s.metaCell}>
+              <Text style={s.label}>Place of supply</Text>
+              <Text>
+                {invoice.placeOfSupply} ({invoice.placeOfSupplyCode})
+              </Text>
+            </View>
+          ) : null}
+          {cur !== BASE_CURRENCY ? (
+            <View style={s.metaCell}>
+              <Text style={s.label}>Exchange rate</Text>
+              <Text>
+                1 {cur} = {formatRate(invoice.exchangeRate)} {BASE_CURRENCY}
+              </Text>
+            </View>
+          ) : null}
+          {invoice.poNumber ? (
+            <View style={s.metaCell}>
+              <Text style={s.label}>PO number</Text>
+              <Text>{invoice.poNumber}</Text>
+            </View>
+          ) : null}
+          {invoice.reference ? (
+            <View style={s.metaCell}>
+              <Text style={s.label}>Reference</Text>
+              <Text>{invoice.reference}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Parties */}
         <View style={s.columns}>
           <View style={s.column}>
             <Text style={s.label}>Bill to</Text>
@@ -64,44 +127,19 @@ export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
               </Text>
             ))}
             {client.email ? <Text style={s.muted}>{client.email}</Text> : null}
+            {client.phone ? <Text style={s.muted}>{client.phone}</Text> : null}
             {showGst && invoice.clientGstin ? <Text style={{ marginTop: 3 }}>GSTIN: {invoice.clientGstin}</Text> : null}
           </View>
-          <View style={s.column}>
-            <View style={s.metaGrid}>
-              <View style={s.metaCell}>
-                <Text style={s.label}>Issue date</Text>
-                <Text>{formatDate(invoice.issueDate)}</Text>
-              </View>
-              <View style={s.metaCell}>
-                <Text style={s.label}>Due date</Text>
-                <Text>{formatDate(invoice.dueDate)}</Text>
-              </View>
-              <View style={s.metaCell}>
-                <Text style={s.label}>Invoice type</Text>
-                <Text>{invoice.invoiceType.toUpperCase()}</Text>
-              </View>
-              <View style={s.metaCell}>
-                <Text style={s.label}>Currency</Text>
-                <Text>{cur}</Text>
-              </View>
-              {showGst && invoice.placeOfSupply ? (
-                <View style={s.metaCell}>
-                  <Text style={s.label}>Place of supply</Text>
-                  <Text>
-                    {invoice.placeOfSupply} ({invoice.placeOfSupplyCode})
-                  </Text>
-                </View>
-              ) : null}
-              {cur !== BASE_CURRENCY ? (
-                <View style={s.metaCell}>
-                  <Text style={s.label}>Exchange rate</Text>
-                  <Text>
-                    1 {cur} = {formatRate(invoice.exchangeRate)} {BASE_CURRENCY}
-                  </Text>
-                </View>
-              ) : null}
+          {shipTo.length ? (
+            <View style={s.column}>
+              <Text style={s.label}>Ship to</Text>
+              {shipTo.map((line, i) => (
+                <Text key={i} style={i === 0 ? s.bold : s.muted}>
+                  {line}
+                </Text>
+              ))}
             </View>
-          </View>
+          ) : null}
         </View>
 
         {/* Items */}
@@ -177,6 +215,15 @@ export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
               <Text>{formatCurrencyCode(invoice.taxAmount, cur)}</Text>
             </View>
           ) : null}
+          {showRoundOff ? (
+            <View style={s.totalRow}>
+              <Text style={s.muted}>Round off</Text>
+              <Text>
+                {roundOffPositive ? "+ " : "- "}
+                {formatCurrencyCode(D(invoice.roundOffAmount).abs().toFixed(2), cur)}
+              </Text>
+            </View>
+          ) : null}
           <View style={[s.totalRow, s.grandTotal]}>
             <Text>Total</Text>
             <Text>{formatCurrencyCode(invoice.total, cur)}</Text>
@@ -201,29 +248,92 @@ export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
           ) : null}
         </View>
 
-        {/* Notes, terms, bank details */}
-        {business.bankDetails ? (
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>Payment details</Text>
-            <Text>{business.bankDetails}</Text>
-          </View>
-        ) : null}
-        {invoice.notes ? (
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>Notes</Text>
-            <Text>{invoice.notes}</Text>
-          </View>
-        ) : null}
-        {invoice.terms ? (
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>Terms</Text>
-            <Text>{invoice.terms}</Text>
+        {/* Amount in words */}
+        <View style={s.wordsBox} wrap={false}>
+          <Text style={s.label}>Amount in words</Text>
+          <Text style={s.bold}>{amountInWords(invoice.total, cur)}</Text>
+        </View>
+
+        {/* HSN / SAC summary */}
+        {hsnRows.length ? (
+          <View style={s.section} wrap={false}>
+            <Text style={s.sectionTitle}>HSN / SAC summary</Text>
+            <View style={s.table}>
+              <View style={s.tableHeader}>
+                <Text style={[s.th, { width: 80 }]}>HSN/SAC</Text>
+                <Text style={[s.th, s.right, { flex: 1 }]}>Taxable value</Text>
+                <Text style={[s.th, s.right, { width: 50 }]}>Rate %</Text>
+                {invoice.isInterState ? (
+                  <Text style={[s.th, s.right, { width: 90 }]}>IGST</Text>
+                ) : (
+                  <>
+                    <Text style={[s.th, s.right, { width: 90 }]}>CGST</Text>
+                    <Text style={[s.th, s.right, { width: 90 }]}>SGST</Text>
+                  </>
+                )}
+                <Text style={[s.th, s.right, { width: 90 }]}>Total tax</Text>
+              </View>
+              {hsnRows.map((row, i) => (
+                <View key={`${row.hsnSac}-${row.taxRate}`} style={i === hsnRows.length - 1 ? s.tableRowLast : s.tableRow}>
+                  <Text style={[s.td, { width: 80 }]}>{row.hsnSac}</Text>
+                  <Text style={[s.td, s.right, { flex: 1 }]}>{formatAmount(row.taxableAmount, cur)}</Text>
+                  <Text style={[s.td, s.right, { width: 50 }]}>{Number(row.taxRate).toFixed(2)}</Text>
+                  {invoice.isInterState ? (
+                    <Text style={[s.td, s.right, { width: 90 }]}>{formatAmount(row.igstAmount, cur)}</Text>
+                  ) : (
+                    <>
+                      <Text style={[s.td, s.right, { width: 90 }]}>{formatAmount(row.cgstAmount, cur)}</Text>
+                      <Text style={[s.td, s.right, { width: 90 }]}>{formatAmount(row.sgstAmount, cur)}</Text>
+                    </>
+                  )}
+                  <Text style={[s.td, s.right, { width: 90 }]}>{formatAmount(row.taxAmount, cur)}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         ) : null}
 
-        <Text style={s.footer} fixed>
-          {business.name} · {invoice.invoiceNumber} · This is a computer-generated document.
-        </Text>
+        {/* Footer row: payment details, notes and terms on the left; authorised signatory on the right */}
+        <View style={s.footerRow}>
+          <View style={s.footerMain}>
+            {business.bankDetails ? (
+              <View style={s.section}>
+                <Text style={s.sectionTitle}>Payment details</Text>
+                <Text>{business.bankDetails}</Text>
+              </View>
+            ) : null}
+            {invoice.notes ? (
+              <View style={s.section}>
+                <Text style={s.sectionTitle}>Notes</Text>
+                <Text>{invoice.notes}</Text>
+              </View>
+            ) : null}
+            {invoice.terms ? (
+              <View style={s.section}>
+                <Text style={s.sectionTitle}>Terms</Text>
+                <Text>{invoice.terms}</Text>
+              </View>
+            ) : null}
+          </View>
+          {showSignatory ? (
+            <View style={s.signatory} wrap={false}>
+              <Text style={s.bold}>For {business.legalName || business.name}</Text>
+              {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt prop */}
+              {business.signatureDataUrl ? <Image src={business.signatureDataUrl} style={s.signature} /> : <View style={s.signatureSpace} />}
+              <View style={s.signatureLine} />
+              {business.signatoryName ? <Text>{business.signatoryName}</Text> : null}
+              <Text style={s.muted}>Authorised Signatory</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <Text
+          style={s.footer}
+          fixed
+          render={({ pageNumber, totalPages }) =>
+            `${business.name} · ${invoice.invoiceNumber} · Page ${pageNumber} of ${totalPages} · This is a computer-generated document.`
+          }
+        />
       </Page>
     </Document>
   );

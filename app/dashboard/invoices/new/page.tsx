@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth/current-user";
 import { listClientOptions } from "@/lib/data/clients";
 import { getRateToInr, type RateQuote } from "@/lib/data/exchange-rates";
 import { getInvoiceDetail } from "@/lib/data/invoices";
+import { listItemOptions } from "@/lib/data/items";
 import { BASE_CURRENCY } from "@/lib/currency";
 import { addDaysIso, todayIso } from "@/lib/fiscal-year";
 import type { InvoiceFormInput } from "@/lib/validation/invoice";
@@ -18,7 +19,11 @@ export default async function NewInvoicePage({ searchParams }: PageProps<"/dashb
   const { business } = await requireUser();
   const params = await searchParams;
   const fromId = typeof params.from === "string" ? params.from : undefined;
-  const [clients, source] = await Promise.all([listClientOptions(business.id), fromId ? getInvoiceDetail(business.id, fromId) : null]);
+  const [clients, catalog, source] = await Promise.all([
+    listClientOptions(business.id),
+    listItemOptions(business.id),
+    fromId ? getInvoiceDetail(business.id, fromId) : null,
+  ]);
   const initialClientId = source?.invoice.clientId ?? (typeof params.client === "string" ? params.client : undefined);
   const initialClient = clients.find((c) => c.id === initialClientId);
   const initialCurrency = source?.invoice.currency ?? initialClient?.currency ?? business.defaultCurrency;
@@ -41,6 +46,9 @@ export default async function NewInvoicePage({ searchParams }: PageProps<"/dashb
         invoiceType: source.invoice.invoiceType,
         issueDate: today,
         dueDate: addDaysIso(today, business.paymentTermsDays),
+        poNumber: "",
+        reference: source.invoice.reference ?? "",
+        shipToAddress: source.invoice.shipToAddress ?? "",
         currency: source.invoice.currency,
         exchangeRate: source.invoice.currency === BASE_CURRENCY ? "1" : (initialRate?.rate ?? source.invoice.exchangeRate),
         exchangeRateSource: source.invoice.currency === BASE_CURRENCY ? "base" : initialRate ? "api" : "manual",
@@ -50,6 +58,7 @@ export default async function NewInvoicePage({ searchParams }: PageProps<"/dashb
         notes: source.invoice.notes ?? "",
         terms: source.invoice.terms ?? "",
         items: source.items.map((i) => ({
+          itemId: i.itemId ?? "",
           description: i.description,
           hsnSac: i.hsnSac ?? "",
           quantity: String(Number(i.quantity)),
@@ -88,6 +97,7 @@ export default async function NewInvoicePage({ searchParams }: PageProps<"/dashb
       <InvoiceForm
         mode="create"
         clients={clients}
+        catalog={catalog}
         initialClientId={initialClientId}
         initialRate={initialRate}
         defaultValues={duplicateValues}
@@ -98,6 +108,7 @@ export default async function NewInvoicePage({ searchParams }: PageProps<"/dashb
           paymentTermsDays: business.paymentTermsDays,
           invoiceNotes: business.invoiceNotes,
           invoiceTerms: business.invoiceTerms,
+          roundTotals: business.roundTotals,
         }}
       />
     </>

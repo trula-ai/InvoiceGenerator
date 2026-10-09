@@ -131,6 +131,7 @@ export async function listClientOptions(businessId: string) {
       gstin: clients.gstin,
       email: clients.email,
       country: clients.country,
+      shippingAddress: clients.shippingAddress,
     })
     .from(clients)
     .where(and(eq(clients.businessId, businessId), isNull(clients.archivedAt)))
@@ -152,6 +153,7 @@ function toRow(values: ClientValues) {
     stateCode: values.stateCode ?? null,
     postalCode: values.postalCode ?? null,
     country: values.country,
+    shippingAddress: values.shippingAddress ?? null,
     currency: values.currency,
     notes: values.notes ?? null,
     autoReminders: values.autoReminders,
