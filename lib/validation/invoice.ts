@@ -12,6 +12,13 @@ import {
 } from "./common";
 
 export const invoiceItemSchema = z.object({
+  /** Catalog item the line was picked from; empty when typed by hand. */
+  itemId: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v ? v : undefined))
+    .refine((v) => v === undefined || z.uuid().safeParse(v).success, "Invalid item"),
   description: z.string().trim().min(1, "Describe the item").max(1000),
   hsnSac: optionalText(10),
   quantity: quantityString,
@@ -26,6 +33,10 @@ export const invoiceSchema = z
     invoiceType: z.enum(["b2b", "b2c"]),
     issueDate: isoDateString,
     dueDate: isoDateString,
+    poNumber: optionalText(60),
+    reference: optionalText(120),
+    /** Multi-line delivery address; blank means "same as billing" and prints nothing. */
+    shipToAddress: optionalText(1000),
     currency: currencyCode,
     exchangeRate: rateString,
     exchangeRateSource: z.enum(["api", "manual", "base"]),

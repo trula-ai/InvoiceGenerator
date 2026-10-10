@@ -35,6 +35,7 @@ export default async function EditClientPage({ params }: PageProps<"/dashboard/c
           stateCode: client.stateCode ?? "",
           postalCode: client.postalCode ?? "",
           country: client.country,
+          shippingAddress: client.shippingAddress ?? "",
           currency: client.currency,
           notes: client.notes ?? "",
           autoReminders: client.autoReminders,

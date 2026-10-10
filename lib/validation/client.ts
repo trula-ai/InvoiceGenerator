@@ -16,6 +16,8 @@ export const clientSchema = z.object({
   stateCode: optionalStateCode,
   postalCode: optionalText(20),
   country: z.string().trim().min(1).max(100).default("India"),
+  /** Multi-line delivery address used to prefill "Ship to" on new invoices. */
+  shippingAddress: optionalText(1000),
   currency: currencyCode,
   notes: optionalText(2000),
   /** Receive scheduled payment reminder emails. */

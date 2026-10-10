@@ -17,6 +17,7 @@ import {
 
 import { businesses } from "./businesses";
 import { clients, clientTypeEnum } from "./clients";
+import { items } from "./items";
 
 /**
  * Invoice lifecycle:
@@ -66,6 +67,14 @@ export const invoices = pgTable(
     issueDate: date().notNull(),
     dueDate: date().notNull(),
 
+    // --- References -----------------------------------------------------------
+    /** Client's purchase order number, printed on the invoice. */
+    poNumber: varchar({ length: 60 }),
+    /** Free-text reference (contract, project, delivery challan, ...). */
+    reference: varchar({ length: 120 }),
+    /** Delivery address snapshot (multi-line); null when same as billing. */
+    shipToAddress: text(),
+
     // --- Currency -----------------------------------------------------------
     /** Invoice currency (ISO 4217). All money columns below are in this currency unless suffixed Inr. */
     currency: char({ length: 3 }).notNull(),
@@ -96,6 +105,8 @@ export const invoices = pgTable(
     igstAmount: money().notNull().default("0"),
     /** Total tax (sum of the above, or a plain tax when GST is disabled). */
     taxAmount: money().notNull().default("0"),
+    /** Signed adjustment that rounds the total to a whole unit; 0 when rounding is off. */
+    roundOffAmount: money().notNull().default("0"),
     total: money().notNull(),
     amountPaid: money().notNull().default("0"),
     balanceDue: money().notNull(),
@@ -130,6 +141,8 @@ export const invoiceItems = pgTable(
       .notNull()
       .references(() => invoices.id, { onDelete: "cascade" }),
     sortOrder: integer().notNull().default(0),
+    /** Catalog item this line was picked from, if any. Kept nullable so history survives catalog deletes. */
+    itemId: uuid().references(() => items.id, { onDelete: "set null" }),
     description: text().notNull(),
     /** HSN (goods) or SAC (services) code; required for GST B2B invoices. */
     hsnSac: varchar({ length: 10 }),

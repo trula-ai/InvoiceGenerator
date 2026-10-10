@@ -18,6 +18,10 @@ import { D, Decimal, toMoney, type DecimalInput } from "@/lib/money";
  * (intra-state) or booked entirely as IGST (inter-state). When it is false the
  * tax is kept as a single "tax" figure, which supports VAT-style or no-tax
  * businesses without any India-specific behaviour.
+ *
+ * When `roundTotals` is set the grand total is rounded to a whole unit and the
+ * signed difference is reported as `roundOffAmount`, so
+ * taxable + tax + roundOff === total always holds.
  */
 
 export type DiscountType = "none" | "percent" | "fixed";
@@ -39,6 +43,8 @@ export interface CalculationInput {
   isInterState: boolean;
   /** INR per 1 unit of the invoice currency. Use 1 for INR invoices. */
   exchangeRate: DecimalInput;
+  /** Round the grand total to the nearest whole unit and book the difference as round-off. */
+  roundTotals?: boolean;
 }
 
 export interface CalculationItemResult {
@@ -58,6 +64,8 @@ export interface CalculationResult {
   sgstAmount: string;
   igstAmount: string;
   taxAmount: string;
+  /** Signed difference between the rounded total and the exact total ("0.00" when rounding is off). */
+  roundOffAmount: string;
   total: string;
   totalInr: string;
 }
@@ -133,7 +141,13 @@ export function calculateInvoice(input: CalculationInput): CalculationResult {
   });
 
   const taxableAmount = subtotal.minus(discountTotal);
-  const total = taxableAmount.plus(taxTotal);
+  const exactTotal = taxableAmount.plus(taxTotal);
+
+  // --- Round-off --------------------------------------------------------------
+  // Indian invoices customarily round the payable amount to the nearest rupee
+  // and show the adjustment as its own line so the document still adds up.
+  const total = input.roundTotals ? exactTotal.toDecimalPlaces(0, Decimal.ROUND_HALF_UP) : exactTotal;
+  const roundOffAmount = total.minus(exactTotal);
   const totalInr = round2(total.times(D(input.exchangeRate)));
 
   return {
@@ -145,6 +159,7 @@ export function calculateInvoice(input: CalculationInput): CalculationResult {
     sgstAmount: toMoney(sgst),
     igstAmount: toMoney(igst),
     taxAmount: toMoney(taxTotal),
+    roundOffAmount: toMoney(roundOffAmount),
     total: toMoney(total),
     totalInr: toMoney(totalInr),
   };

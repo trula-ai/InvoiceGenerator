@@ -82,6 +82,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
               <Row label="Phone" value={client.phone} />
               <Row label="GSTIN" value={client.gstin} mono />
               <Row label="Address" value={address.length ? address.join("\n") : null} pre />
+              {client.shippingAddress ? <Row label="Ship to" value={client.shippingAddress} pre /> : null}
               <Row label="Reminders" value={client.autoReminders ? "Automatic reminders on" : "Automatic reminders off (manual only)"} />
               <Row label="Notes" value={client.notes} pre />
             </dl>

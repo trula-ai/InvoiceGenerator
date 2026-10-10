@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { CURRENCY_OPTIONS, INDIA_STATE_OPTIONS } from "@/components/shared/options";
 import { SelectField } from "@/components/shared/select-field";
-import { LogoField } from "@/components/settings/logo-field";
+import { ImageField } from "@/components/settings/image-field";
 import type { Business } from "@/db/schema";
 import { updateSettingsAction } from "@/lib/actions/settings";
 import { currentFinancialYear } from "@/lib/fiscal-year";
@@ -29,7 +29,17 @@ const SECTION_FIELDS: Record<SectionId, (keyof BusinessSettingsInput)[]> = {
   profile: ["name", "legalName", "email", "phone", "website", "pan", "logoDataUrl"],
   address: ["addressLine1", "addressLine2", "city", "postalCode", "country", "stateCode", "state"],
   tax: ["gstEnabled", "gstin"],
-  invoice: ["invoicePrefix", "defaultCurrency", "paymentTermsDays", "bankDetails", "invoiceNotes", "invoiceTerms"],
+  invoice: [
+    "invoicePrefix",
+    "defaultCurrency",
+    "paymentTermsDays",
+    "roundTotals",
+    "signatoryName",
+    "signatureDataUrl",
+    "bankDetails",
+    "invoiceNotes",
+    "invoiceTerms",
+  ],
   reminders: ["remindersEnabled", "reminderDaysBefore", "reminderOverdueEveryDays"],
 };
 
@@ -84,6 +94,9 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
       invoiceNotes: business.invoiceNotes ?? "",
       invoiceTerms: business.invoiceTerms ?? "",
       logoDataUrl: business.logoDataUrl ?? "",
+      roundTotals: business.roundTotals,
+      signatoryName: business.signatoryName ?? "",
+      signatureDataUrl: business.signatureDataUrl ?? "",
       remindersEnabled: business.remindersEnabled,
       reminderDaysBefore: business.reminderDaysBefore,
       reminderOverdueEveryDays: business.reminderOverdueEveryDays,
@@ -144,7 +157,7 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
               <Controller
                 control={form.control}
                 name="logoDataUrl"
-                render={({ field }) => <LogoField value={field.value ?? ""} onChange={field.onChange} businessName={name || business.name} />}
+                render={({ field }) => <ImageField kind="logo" value={field.value ?? ""} onChange={field.onChange} businessName={name || business.name} />}
               />
               <FieldDescription>PNG or JPEG up to 300 KB. Printed on invoice and receipt PDFs and shown on the public invoice page.</FieldDescription>
               <FieldError errors={[errors.logoDataUrl]} />
@@ -308,6 +321,35 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
                 <FieldLabel htmlFor="paymentTermsDays">Payment terms (days)</FieldLabel>
                 <Input id="paymentTermsDays" type="number" min={0} max={365} {...form.register("paymentTermsDays")} />
                 <FieldError errors={[errors.paymentTermsDays]} />
+              </Field>
+            </div>
+            <Field orientation="horizontal">
+              <Controller
+                control={form.control}
+                name="roundTotals"
+                render={({ field }) => <Switch id="roundTotals" checked={field.value ?? false} onCheckedChange={(checked) => field.onChange(checked)} />}
+              />
+              <FieldLabel htmlFor="roundTotals">Round totals to the nearest whole unit</FieldLabel>
+            </Field>
+            <FieldDescription className="-mt-3">
+              Rounds the payable total to the nearest rupee (or unit of the invoice currency) and prints the difference as a round-off line.
+            </FieldDescription>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field data-invalid={!!errors.signatoryName}>
+                <FieldLabel htmlFor="signatoryName">Authorised signatory</FieldLabel>
+                <Input id="signatoryName" placeholder="Priya Sharma, Director" {...form.register("signatoryName")} />
+                <FieldDescription>Printed under the signature line on invoices.</FieldDescription>
+                <FieldError errors={[errors.signatoryName]} />
+              </Field>
+              <Field data-invalid={!!errors.signatureDataUrl}>
+                <FieldLabel>Signature</FieldLabel>
+                <Controller
+                  control={form.control}
+                  name="signatureDataUrl"
+                  render={({ field }) => <ImageField kind="signature" value={field.value ?? ""} onChange={field.onChange} />}
+                />
+                <FieldDescription>PNG or JPEG up to 300 KB, ideally on a white or transparent background.</FieldDescription>
+                <FieldError errors={[errors.signatureDataUrl]} />
               </Field>
             </div>
             <Field>

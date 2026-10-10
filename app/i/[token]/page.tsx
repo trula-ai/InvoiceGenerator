@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { amountInWords } from "@/lib/amount-in-words";
 import { BASE_CURRENCY } from "@/lib/currency";
 import { getInvoiceDetailByToken } from "@/lib/data/invoices";
 import { formatCurrency, formatDate, formatRate } from "@/lib/format";
-import { isZero } from "@/lib/money";
+import { summariseByHsn } from "@/lib/hsn-summary";
+import { D, isZero } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validation/payment";
 
 export const metadata: Metadata = { title: "Invoice", robots: { index: false, follow: false } };
@@ -32,6 +34,9 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
   const businessAddress = compact([business.addressLine1, business.addressLine2, [business.city, business.state, business.postalCode].filter(Boolean).join(", "), business.country]);
   const clientAddress = compact([client.addressLine1, client.addressLine2, [client.city, client.state, client.postalCode].filter(Boolean).join(", "), client.country]);
   const settled = invoice.status === "paid";
+  const shipTo = (invoice.shipToAddress ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const hsnRows = showGst ? summariseByHsn(items, invoice.isInterState) : [];
+  const roundOff = D(invoice.roundOffAmount);
 
   return (
     <main className="min-h-dvh bg-muted/40 px-4 py-8 sm:px-6 lg:py-12">
@@ -79,12 +84,15 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
               <Meta label="Issued" value={formatDate(invoice.issueDate)} />
               <Meta label="Due" value={formatDate(invoice.dueDate)} />
               <Meta label="Currency" value={cur !== BASE_CURRENCY ? `${cur} · 1 ${cur} = ${formatRate(invoice.exchangeRate)} ${BASE_CURRENCY}` : cur} />
+              {invoice.poNumber ? <Meta label="PO number" value={invoice.poNumber} /> : null}
+              {invoice.reference ? <Meta label="Reference" value={invoice.reference} /> : null}
             </dl>
           </CardHeader>
           <CardContent className="flex flex-col gap-6">
-            <div className="grid gap-6 sm:grid-cols-2">
+            <div className={`grid gap-6 sm:grid-cols-2 ${shipTo.length ? "lg:grid-cols-3" : ""}`}>
               <Party title="From" name={business.name} lines={[...businessAddress, business.phone ?? ""]} gstin={showGst ? business.gstin : null} />
               <Party title="Bill to" name={client.name} lines={[client.contactName ?? "", ...clientAddress, client.email ?? ""]} gstin={showGst ? invoice.clientGstin : null} />
+              {shipTo.length ? <Party title="Ship to" name={shipTo[0]} lines={shipTo.slice(1)} /> : null}
             </div>
 
             <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
@@ -137,10 +145,14 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
               ) : !isZero(invoice.taxAmount) ? (
                 <Line label="Tax" value={formatCurrency(invoice.taxAmount, cur)} />
               ) : null}
+              {!roundOff.isZero() ? (
+                <Line label="Round off" value={`${roundOff.greaterThan(0) ? "+" : "-"} ${formatCurrency(roundOff.abs().toFixed(2), cur)}`} />
+              ) : null}
               <div className="flex items-center justify-between border-t pt-2 text-base font-semibold">
                 <span>Total</span>
                 <span>{formatCurrency(invoice.total, cur)}</span>
               </div>
+              <p className="text-xs text-muted-foreground">{amountInWords(invoice.total, cur)}</p>
               {!isZero(invoice.amountPaid) ? <Line label="Paid" value={formatCurrency(invoice.amountPaid, cur)} /> : null}
               <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-base font-semibold ${settled ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-primary/5"}`}>
                 <span className="flex items-center gap-1.5">
@@ -150,6 +162,50 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
                 <span>{formatCurrency(invoice.balanceDue, cur)}</span>
               </div>
             </div>
+
+            {hsnRows.length ? (
+              <div className="text-sm">
+                <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">HSN / SAC summary</p>
+                <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>HSN/SAC</TableHead>
+                        <TableHead className="text-right">Taxable value</TableHead>
+                        <TableHead className="hidden text-right sm:table-cell">Rate</TableHead>
+                        {invoice.isInterState ? (
+                          <TableHead className="hidden text-right sm:table-cell">IGST</TableHead>
+                        ) : (
+                          <>
+                            <TableHead className="hidden text-right sm:table-cell">CGST</TableHead>
+                            <TableHead className="hidden text-right sm:table-cell">SGST</TableHead>
+                          </>
+                        )}
+                        <TableHead className="text-right">Total tax</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {hsnRows.map((row) => (
+                        <TableRow key={`${row.hsnSac}-${row.taxRate}`}>
+                          <TableCell className="font-mono text-xs">{row.hsnSac}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatCurrency(row.taxableAmount, cur)}</TableCell>
+                          <TableCell className="hidden text-right tabular-nums sm:table-cell">{Number(row.taxRate).toFixed(2)}%</TableCell>
+                          {invoice.isInterState ? (
+                            <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatCurrency(row.igstAmount, cur)}</TableCell>
+                          ) : (
+                            <>
+                              <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatCurrency(row.cgstAmount, cur)}</TableCell>
+                              <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatCurrency(row.sgstAmount, cur)}</TableCell>
+                            </>
+                          )}
+                          <TableCell className="text-right font-medium tabular-nums">{formatCurrency(row.taxAmount, cur)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            ) : null}
 
             {payments.length > 0 ? (
               <div className="text-sm">
