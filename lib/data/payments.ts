@@ -108,6 +108,7 @@ export async function recordPayment(businessId: string, values: PaymentFormValue
       .for("update")
       .limit(1);
     if (!invoice) throw new Error("Invoice not found.");
+    if (invoice.documentKind !== "invoice") throw new Error("Payments can only be recorded against invoices.");
     if (!PAYABLE_STATUSES.includes(invoice.status)) {
       throw new Error(`Payments cannot be recorded against a ${invoice.status} invoice.`);
     }

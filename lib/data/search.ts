@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, ilike, isNull, or } from "drizzle-orm";
 
-import { clients, invoices, payments, type InvoiceStatus } from "@/db/schema";
+import { clients, invoices, payments, type DocumentKind, type InvoiceStatus } from "@/db/schema";
 import { db } from "@/lib/db";
+import { documentPath } from "@/lib/documents";
 
 /**
  * Type-ahead search used by the header search box and the list-page search
@@ -18,6 +19,7 @@ export interface ClientSearchResult {
 
 export interface InvoiceSearchResult {
   id: string;
+  documentKind: DocumentKind;
   invoiceNumber: string;
   clientName: string;
   status: InvoiceStatus;
@@ -82,6 +84,7 @@ export async function searchInvoices(businessId: string, q: string, limit = 8): 
   return db
     .select({
       id: invoices.id,
+      documentKind: invoices.documentKind,
       invoiceNumber: invoices.invoiceNumber,
       clientName: clients.name,
       status: invoices.status,
@@ -141,7 +144,7 @@ export async function searchHistory(businessId: string, q: string, limit = 8): P
       date: inv.issueDate,
       amount: inv.total,
       currency: inv.currency,
-      href: `/dashboard/invoices/${inv.id}`,
+      href: documentPath(inv.documentKind, inv.id),
     })),
     ...paymentRows.map<HistorySearchResult>((p) => ({
       kind: "payment",

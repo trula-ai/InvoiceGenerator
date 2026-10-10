@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { clients, invoices, payments } from "@/db/schema";
 import { db } from "@/lib/db";
 import { financialYearRange, currentFinancialYear } from "@/lib/fiscal-year";
+import { D, toMoney } from "@/lib/money";
 
 import { syncOverdueStatuses } from "./invoices";
 
@@ -19,7 +20,11 @@ export interface ReportRange {
 
 export interface ReportSummary {
   range: ReportRange;
+  /** Issued invoices net of issued credit notes. */
   invoicedInr: string;
+  /** Total of credit notes issued in the range. */
+  creditedInr: string;
+  creditNoteCount: number;
   collectedInr: string;
   outstandingInr: string;
   overdueInr: string;
@@ -57,7 +62,10 @@ export interface MonthRow {
   collectedInr: string;
 }
 
-const ISSUED = inArray(invoices.status, ["pending", "partially_paid", "paid", "overdue"]);
+const IS_INVOICE = eq(invoices.documentKind, "invoice");
+const ISSUED = and(IS_INVOICE, inArray(invoices.status, ["pending", "partially_paid", "paid", "overdue"]))!;
+/** Issued credit notes, subtracted from invoiced totals so revenue is net of credits. */
+const ISSUED_CREDIT = and(eq(invoices.documentKind, "credit_note"), eq(invoices.status, "pending"))!;
 
 export function defaultReportRange(): ReportRange {
   return financialYearRange(currentFinancialYear());
@@ -85,13 +93,24 @@ export async function getReportSummary(businessId: string, range: ReportRange): 
     .from(payments)
     .where(and(eq(payments.businessId, businessId), gte(payments.paymentDate, range.from), lte(payments.paymentDate, range.to)));
 
+  const [credit] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${invoices.totalInr}), 0)::text`,
+      tax: sql<string>`coalesce(sum(${invoices.taxAmount} * ${invoices.exchangeRate}), 0)::numeric(14,2)::text`,
+      count: sql<number>`count(*)`.mapWith(Number),
+    })
+    .from(invoices)
+    .where(and(eq(invoices.businessId, businessId), ISSUED_CREDIT, gte(invoices.issueDate, range.from), lte(invoices.issueDate, range.to)));
+
   return {
     range,
-    invoicedInr: inv?.invoiced ?? "0",
+    invoicedInr: toMoney(D(inv?.invoiced ?? 0).minus(D(credit?.total ?? 0))),
+    creditedInr: credit?.total ?? "0",
+    creditNoteCount: credit?.count ?? 0,
     collectedInr: pay?.collected ?? "0",
     outstandingInr: inv?.outstanding ?? "0",
     overdueInr: inv?.overdue ?? "0",
-    taxInr: inv?.tax ?? "0",
+    taxInr: toMoney(D(inv?.tax ?? 0).minus(D(credit?.tax ?? 0))),
     invoiceCount: inv?.count ?? 0,
     paidCount: inv?.paidCount ?? 0,
     averageInvoiceInr: inv?.average ?? "0",
@@ -137,7 +156,7 @@ export async function getStatusBreakdown(businessId: string, range: ReportRange)
       totalInr: sql<string>`coalesce(sum(${invoices.totalInr}), 0)::text`,
     })
     .from(invoices)
-    .where(and(eq(invoices.businessId, businessId), gte(invoices.issueDate, range.from), lte(invoices.issueDate, range.to)))
+    .where(and(eq(invoices.businessId, businessId), IS_INVOICE, gte(invoices.issueDate, range.from), lte(invoices.issueDate, range.to)))
     .groupBy(invoices.status);
 }
 

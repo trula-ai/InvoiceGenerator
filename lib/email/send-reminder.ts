@@ -31,7 +31,7 @@ export async function sendReminderEmail(businessId: string, invoiceId: string, o
   if (!detail) throw new Error("Invoice not found.");
   const { invoice, client, business } = detail;
 
-  if (!PAYABLE_STATUSES.includes(invoice.status)) {
+  if (invoice.documentKind !== "invoice" || !PAYABLE_STATUSES.includes(invoice.status)) {
     throw new Error("Reminders can only be sent for invoices that are awaiting payment.");
   }
   const to = (options.to ?? client.email ?? "").trim().toLowerCase();

@@ -2,8 +2,9 @@ import { Document, Image, Page, Text, View } from "@react-pdf/renderer";
 
 import { amountInWords } from "@/lib/amount-in-words";
 import type { InvoiceDetail } from "@/lib/data/invoices";
-import { formatAmount, formatCurrencyCode, formatDate, formatRate, INVOICE_STATUS_LABELS } from "@/lib/format";
+import { formatAmount, formatCurrencyCode, formatDate, formatRate } from "@/lib/format";
 import { BASE_CURRENCY } from "@/lib/currency";
+import { documentLabel, documentTitle, secondDateLabel, statusLabel } from "@/lib/documents";
 import { summariseByHsn } from "@/lib/hsn-summary";
 import { D, isZero } from "@/lib/money";
 
@@ -30,13 +31,16 @@ function textLines(value: string | null | undefined): string[] {
 }
 
 export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
-  const { invoice, client, business, items } = detail;
+  const { invoice, client, business, items, source } = detail;
+  const kind = invoice.documentKind;
   const cur = invoice.currency;
   const showGst = invoice.gstApplied;
   const showDiscount = !isZero(invoice.discountAmount);
   const showRoundOff = !isZero(invoice.roundOffAmount);
   const roundOffPositive = D(invoice.roundOffAmount).greaterThan(0);
-  const title = invoice.invoiceType === "b2b" && showGst ? "TAX INVOICE" : "INVOICE";
+  const title = documentTitle(kind, invoice.invoiceType === "b2b" && showGst);
+  const showCredit = kind === "invoice" && !isZero(invoice.creditAmount);
+  const showBalance = kind === "invoice" && (!isZero(invoice.amountPaid) || showCredit);
   const shipTo = textLines(invoice.shipToAddress);
   const hsnRows = showGst ? summariseByHsn(items, invoice.isInterState) : [];
   const showSignatory = showGst || !!business.signatureDataUrl || !!business.signatoryName;
@@ -63,7 +67,7 @@ export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
           <View>
             <Text style={s.docTitle}>{title}</Text>
             <Text style={[s.right, s.bold, { fontSize: 11, marginTop: 4 }]}>{invoice.invoiceNumber}</Text>
-            <Text style={s.badge}>{INVOICE_STATUS_LABELS[invoice.status] ?? invoice.status}</Text>
+            <Text style={s.badge}>{statusLabel(invoice.status, kind)}</Text>
           </View>
         </View>
 
@@ -74,11 +78,17 @@ export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
             <Text>{formatDate(invoice.issueDate)}</Text>
           </View>
           <View style={s.metaCell}>
-            <Text style={s.label}>Due date</Text>
+            <Text style={s.label}>{secondDateLabel(kind)}</Text>
             <Text>{formatDate(invoice.dueDate)}</Text>
           </View>
+          {source ? (
+            <View style={s.metaCell}>
+              <Text style={s.label}>{kind === "credit_note" ? "Against invoice" : `From ${documentLabel(source.documentKind).toLowerCase()}`}</Text>
+              <Text>{source.invoiceNumber}</Text>
+            </View>
+          ) : null}
           <View style={s.metaCell}>
-            <Text style={s.label}>Invoice type</Text>
+            <Text style={s.label}>Supply type</Text>
             <Text>{invoice.invoiceType.toUpperCase()}</Text>
           </View>
           <View style={s.metaCell}>
@@ -225,15 +235,23 @@ export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
             </View>
           ) : null}
           <View style={[s.totalRow, s.grandTotal]}>
-            <Text>Total</Text>
+            <Text>{kind === "credit_note" ? "Credit total" : "Total"}</Text>
             <Text>{formatCurrencyCode(invoice.total, cur)}</Text>
           </View>
-          {!isZero(invoice.amountPaid) ? (
+          {showBalance ? (
             <>
-              <View style={s.totalRow}>
-                <Text style={s.muted}>Amount paid</Text>
-                <Text>- {formatCurrencyCode(invoice.amountPaid, cur)}</Text>
-              </View>
+              {!isZero(invoice.amountPaid) ? (
+                <View style={s.totalRow}>
+                  <Text style={s.muted}>Amount paid</Text>
+                  <Text>- {formatCurrencyCode(invoice.amountPaid, cur)}</Text>
+                </View>
+              ) : null}
+              {showCredit ? (
+                <View style={s.totalRow}>
+                  <Text style={s.muted}>Credit notes applied</Text>
+                  <Text>- {formatCurrencyCode(invoice.creditAmount, cur)}</Text>
+                </View>
+              ) : null}
               <View style={[s.totalRow, s.bold]}>
                 <Text>Balance due</Text>
                 <Text>{formatCurrencyCode(invoice.balanceDue, cur)}</Text>
@@ -296,7 +314,7 @@ export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
         {/* Footer row: payment details, notes and terms on the left; authorised signatory on the right */}
         <View style={s.footerRow}>
           <View style={s.footerMain}>
-            {business.bankDetails ? (
+            {business.bankDetails && kind !== "credit_note" ? (
               <View style={s.section}>
                 <Text style={s.sectionTitle}>Payment details</Text>
                 <Text>{business.bankDetails}</Text>

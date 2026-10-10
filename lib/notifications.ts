@@ -55,6 +55,10 @@ export const KIND_LABELS: Record<NotificationKind, string> = {
   reminder_sent: "Reminder sent",
   reminder_failed: "Reminder failed",
   statement_sent: "Statement sent",
+  quote_accepted: "Quote accepted",
+  quote_declined: "Quote declined",
+  quote_converted: "Quote converted",
+  credit_note_issued: "Credit note issued",
 };
 
 /**

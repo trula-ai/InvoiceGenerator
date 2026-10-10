@@ -2,17 +2,24 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { invoices, type DocumentKind } from "@/db/schema";
 import { requireUser } from "@/lib/auth/current-user";
 import { getRateToInr, type RateQuote } from "@/lib/data/exchange-rates";
 import {
   cancelInvoice,
+  convertQuoteToInvoice,
   createInvoice,
   deleteDraftInvoice,
   issueInvoice,
+  respondToQuote,
   updateInvoice,
+  type QuoteDecision,
 } from "@/lib/data/invoices";
+import { db } from "@/lib/db";
+import { documentBasePath, documentPath, isDocumentKind } from "@/lib/documents";
 import { sendInvoiceEmail, type SendInvoiceResult } from "@/lib/email/send-invoice";
 import { sendReminderEmail } from "@/lib/email/send-reminder";
 import { currencyCode, type ActionResult } from "@/lib/validation/common";
@@ -20,29 +27,51 @@ import { invoiceSchema, type InvoiceFormInput } from "@/lib/validation/invoice";
 
 import { failure, validationFailure } from "./utils";
 
-function revalidateInvoice(id?: string) {
+function revalidateDocuments(kind?: DocumentKind, id?: string) {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/invoices");
+  revalidatePath("/dashboard/quotes");
+  revalidatePath("/dashboard/credit-notes");
   revalidatePath("/dashboard/clients");
   revalidatePath("/dashboard/reports");
   revalidatePath("/dashboard/history");
-  if (id) revalidatePath(`/dashboard/invoices/${id}`);
+  revalidatePath("/dashboard/notifications");
+  if (kind && id) revalidatePath(documentPath(kind, id));
 }
 
-export async function createInvoiceAction(input: InvoiceFormInput): Promise<ActionResult> {
+/** Kind of a document the signed-in business owns, or null. */
+async function kindOf(businessId: string, id: string): Promise<DocumentKind | null> {
+  const [row] = await db
+    .select({ documentKind: invoices.documentKind })
+    .from(invoices)
+    .where(and(eq(invoices.businessId, businessId), eq(invoices.id, id)))
+    .limit(1);
+  return row?.documentKind ?? null;
+}
+
+export interface CreateDocumentActionOptions {
+  kind?: DocumentKind;
+  /** Invoice a credit note is issued against. */
+  sourceDocumentId?: string;
+}
+
+export async function createInvoiceAction(input: InvoiceFormInput, options: CreateDocumentActionOptions = {}): Promise<ActionResult> {
   const { business } = await requireUser();
   const parsed = invoiceSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
+  const kind: DocumentKind = isDocumentKind(options.kind) ? options.kind : "invoice";
+  const sourceDocumentId = options.sourceDocumentId && z.uuid().safeParse(options.sourceDocumentId).success ? options.sourceDocumentId : null;
 
   let id: string;
   try {
-    id = await createInvoice(business, parsed.data);
+    id = await createInvoice(business, parsed.data, { kind, sourceDocumentId });
   } catch (error) {
-    return failure(error, "Could not create the invoice.");
+    return failure(error, "Could not create the document.");
   }
 
-  revalidateInvoice(id);
-  redirect(`/dashboard/invoices/${id}`);
+  revalidateDocuments(kind, id);
+  if (sourceDocumentId) revalidatePath(documentPath("invoice", sourceDocumentId));
+  redirect(documentPath(kind, id));
 }
 
 export async function updateInvoiceAction(id: string, input: InvoiceFormInput): Promise<ActionResult> {
@@ -50,14 +79,16 @@ export async function updateInvoiceAction(id: string, input: InvoiceFormInput): 
   const parsed = invoiceSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
 
+  let kind: DocumentKind;
   try {
     await updateInvoice(business, id, parsed.data);
+    kind = (await kindOf(business.id, id)) ?? "invoice";
   } catch (error) {
-    return failure(error, "Could not update the invoice.");
+    return failure(error, "Could not update the document.");
   }
 
-  revalidateInvoice(id);
-  redirect(`/dashboard/invoices/${id}`);
+  revalidateDocuments(kind, id);
+  redirect(documentPath(kind, id));
 }
 
 export async function issueInvoiceAction(id: string): Promise<ActionResult> {
@@ -67,7 +98,7 @@ export async function issueInvoiceAction(id: string): Promise<ActionResult> {
   } catch (error) {
     return failure(error);
   }
-  revalidateInvoice(id);
+  revalidateDocuments(await kindOf(business.id, id) ?? undefined, id);
   return { ok: true, data: undefined };
 }
 
@@ -78,19 +109,47 @@ export async function cancelInvoiceAction(id: string): Promise<ActionResult> {
   } catch (error) {
     return failure(error);
   }
-  revalidateInvoice(id);
+  revalidateDocuments(await kindOf(business.id, id) ?? undefined, id);
   return { ok: true, data: undefined };
 }
 
 export async function deleteDraftInvoiceAction(id: string): Promise<ActionResult> {
   const { business } = await requireUser();
+  const kind = (await kindOf(business.id, id)) ?? "invoice";
   try {
     await deleteDraftInvoice(business.id, id);
   } catch (error) {
     return failure(error);
   }
-  revalidateInvoice();
-  redirect("/dashboard/invoices");
+  revalidateDocuments();
+  redirect(documentBasePath(kind));
+}
+
+/** Owner marks a quote accepted or declined on the client's behalf. */
+export async function respondToQuoteAction(id: string, decision: QuoteDecision): Promise<ActionResult> {
+  const { business } = await requireUser();
+  if (decision !== "accepted" && decision !== "declined") return { ok: false, error: "Invalid decision." };
+  try {
+    await respondToQuote(business.id, id, decision);
+  } catch (error) {
+    return failure(error);
+  }
+  revalidateDocuments("quote", id);
+  return { ok: true, data: undefined };
+}
+
+/** Creates an invoice from a quote and opens it. */
+export async function convertQuoteAction(id: string): Promise<ActionResult> {
+  const { business } = await requireUser();
+  let invoiceId: string;
+  try {
+    invoiceId = await convertQuoteToInvoice(business, id);
+  } catch (error) {
+    return failure(error, "Could not convert the quote.");
+  }
+  revalidateDocuments("quote", id);
+  revalidateDocuments("invoice", invoiceId);
+  redirect(documentPath("invoice", invoiceId));
 }
 
 const sendSchema = z.object({
@@ -111,7 +170,7 @@ export async function sendInvoiceEmailAction(
       to: parsed.data.to || undefined,
       message: parsed.data.message || undefined,
     });
-    revalidateInvoice(id);
+    revalidateDocuments(await kindOf(business.id, id) ?? undefined, id);
     return { ok: true, data: result };
   } catch (error) {
     return failure(error, "Could not send the email.");
@@ -131,7 +190,7 @@ export async function sendReminderEmailAction(
       to: parsed.data.to || undefined,
       message: parsed.data.message || undefined,
     });
-    revalidateInvoice(id);
+    revalidateDocuments("invoice", id);
     return { ok: true, data: result };
   } catch (error) {
     return failure(error, "Could not send the reminder.");

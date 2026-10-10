@@ -24,6 +24,10 @@ export const notificationKindEnum = pgEnum("notification_kind", [
   "reminder_sent",
   "reminder_failed",
   "statement_sent",
+  "quote_accepted",
+  "quote_declined",
+  "quote_converted",
+  "credit_note_issued",
 ]);
 
 export const notificationSeverityEnum = pgEnum("notification_severity", ["info", "success", "warning", "urgent"]);

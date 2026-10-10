@@ -22,16 +22,28 @@ import {
 } from "@/components/shared/options";
 import { SelectField } from "@/components/shared/select-field";
 import { ItemSuggestInput } from "@/components/invoices/item-suggest-input";
+import type { DocumentKind } from "@/db/schema";
 import { createInvoiceAction, fetchExchangeRateAction, updateInvoiceAction } from "@/lib/actions/invoices";
 import type { RateQuote } from "@/lib/data/exchange-rates";
 import type { ItemOption } from "@/lib/data/items";
 import { amountInWords } from "@/lib/amount-in-words";
 import { calculateInvoice } from "@/lib/calculations";
 import { BASE_CURRENCY } from "@/lib/currency";
+import { documentLabel, secondDateLabel } from "@/lib/documents";
 import { addDaysIso, todayIso } from "@/lib/fiscal-year";
 import { formatCurrency, formatDateTime, formatRate } from "@/lib/format";
-import { isZero } from "@/lib/money";
+import { compare, isZero } from "@/lib/money";
 import { invoiceSchema, type InvoiceFormInput, type InvoiceFormValues } from "@/lib/validation/invoice";
+
+/** The invoice a credit note is issued against. */
+export interface SourceDocument {
+  id: string;
+  invoiceNumber: string;
+  currency: string;
+  total: string;
+  /** How much of the invoice can still be credited (total minus other issued credit notes). */
+  remainingCredit: string;
+}
 
 export interface ClientOption {
   id: string;
@@ -50,6 +62,7 @@ export interface BusinessContext {
   stateCode: string | null;
   defaultCurrency: string;
   paymentTermsDays: number;
+  quoteValidityDays: number;
   invoiceNotes: string | null;
   invoiceTerms: string | null;
   roundTotals: boolean;
@@ -57,6 +70,10 @@ export interface BusinessContext {
 
 interface InvoiceFormProps {
   mode: "create" | "edit";
+  /** Invoice (default), quote or credit note. Changes labels, dates and which fields are locked. */
+  kind?: DocumentKind;
+  /** Required for credit notes: the invoice being credited. */
+  sourceDocument?: SourceDocument | null;
   invoiceId?: string;
   /** Status of the invoice being edited (controls which submit buttons show). */
   currentStatus?: string;
@@ -85,7 +102,21 @@ const emptyItem = (taxRate: string): InvoiceFormInput["items"][number] => ({
   taxRate,
 });
 
-export function InvoiceForm({ mode, invoiceId, currentStatus, clients, catalog, business, defaultValues, initialClientId, initialRate }: InvoiceFormProps) {
+export function InvoiceForm({
+  mode,
+  kind = "invoice",
+  sourceDocument = null,
+  invoiceId,
+  currentStatus,
+  clients,
+  catalog,
+  business,
+  defaultValues,
+  initialClientId,
+  initialRate,
+}: InvoiceFormProps) {
+  const label = documentLabel(kind);
+  const isCreditNote = kind === "credit_note";
   const [serverError, setServerError] = useState<string | null>(null);
   const [rateInfo, setRateInfo] = useState<{ fetchedAt: Date | null; stale: boolean } | null>(
     initialRate && initialRate.source === "api" ? { fetchedAt: initialRate.fetchedAt, stale: initialRate.stale } : null,
@@ -105,7 +136,7 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, catalog, 
       clientId: initialClient?.id ?? "",
       invoiceType: initialClient?.type ?? "b2b",
       issueDate: today,
-      dueDate: addDaysIso(today, business.paymentTermsDays),
+      dueDate: addDaysIso(today, kind === "quote" ? business.quoteValidityDays : business.paymentTermsDays),
       poNumber: "",
       reference: "",
       shipToAddress: initialClient?.shippingAddress ?? "",
@@ -220,9 +251,14 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, catalog, 
     }
   }
 
+  const overCredit = isCreditNote && !!sourceDocument && compare(totals.total, sourceDocument.remainingCredit) > 0;
+
   const submit = form.handleSubmit(async (parsed) => {
     setServerError(null);
-    const result = mode === "create" ? await createInvoiceAction(parsed) : await updateInvoiceAction(invoiceId!, parsed);
+    const result =
+      mode === "create"
+        ? await createInvoiceAction(parsed, { kind, sourceDocumentId: sourceDocument?.id })
+        : await updateInvoiceAction(invoiceId!, parsed);
     if (result && !result.ok) {
       setServerError(result.error);
       toast.error(result.error);
@@ -242,8 +278,12 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, catalog, 
         {/* Client & dates */}
         <Card>
           <CardHeader>
-            <CardTitle>Invoice details</CardTitle>
-            <CardDescription>The invoice number and financial year are assigned automatically when you save.</CardDescription>
+            <CardTitle>{label} details</CardTitle>
+            <CardDescription>
+              {isCreditNote && sourceDocument
+                ? `Issued against ${sourceDocument.invoiceNumber}. Up to ${formatCurrency(sourceDocument.remainingCredit, sourceDocument.currency)} can still be credited on that invoice.`
+                : `The ${label.toLowerCase()} number and financial year are assigned automatically when you save.`}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <FieldGroup>
@@ -257,8 +297,9 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, catalog, 
                     onValueChange={onClientChange}
                     placeholder={clients.length ? "Select a client" : "No clients yet"}
                     invalid={!!errors.clientId}
-                    disabled={clients.length === 0}
+                    disabled={clients.length === 0 || isCreditNote}
                   />
+                  {isCreditNote ? <FieldDescription>A credit note always goes to the client on the original invoice.</FieldDescription> : null}
                   {clients.length === 0 ? <FieldDescription>You have no clients yet. Add one first.</FieldDescription> : null}
                   <FieldError errors={[errors.clientId]} />
                 </Field>
@@ -308,7 +349,7 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, catalog, 
                   <FieldError errors={[errors.issueDate]} />
                 </Field>
                 <Field data-invalid={!!errors.dueDate}>
-                  <FieldLabel htmlFor="dueDate">Due date</FieldLabel>
+                  <FieldLabel htmlFor="dueDate">{secondDateLabel(kind)}</FieldLabel>
                   <Controller
                     control={control}
                     name="dueDate"
@@ -453,13 +494,15 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, catalog, 
         <Card>
           <CardHeader>
             <CardTitle>Currency</CardTitle>
-            <CardDescription>The rate is frozen on the invoice and never changes later.</CardDescription>
+            <CardDescription>
+              {isCreditNote ? "A credit note uses the currency and exchange rate of the invoice it credits." : `The rate is frozen on the ${label.toLowerCase()} and never changes later.`}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <FieldGroup>
               <Field data-invalid={!!errors.currency}>
                 <FieldLabel htmlFor="currency">Invoice currency</FieldLabel>
-                <SelectField id="currency" options={CURRENCY_OPTIONS} value={currency} onValueChange={onCurrencyChange} />
+                <SelectField id="currency" options={CURRENCY_OPTIONS} value={currency} onValueChange={onCurrencyChange} disabled={isCreditNote} />
               </Field>
               {currency !== BASE_CURRENCY ? (
                 <>
@@ -544,10 +587,15 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, catalog, 
               <SummaryRow label="Round off" value={`${Number(totals.roundOffAmount) > 0 ? "+" : "-"} ${formatCurrency(Math.abs(Number(totals.roundOffAmount)), currency)}`} />
             ) : null}
             <div className="mt-2 flex items-center justify-between border-t pt-3 text-base font-semibold">
-              <span>Total</span>
+              <span>{isCreditNote ? "Credit total" : "Total"}</span>
               <span>{formatCurrency(totals.total, currency)}</span>
             </div>
             {!isZero(totals.total) ? <p className="text-xs text-muted-foreground">{amountInWords(totals.total, currency)}</p> : null}
+            {overCredit && sourceDocument ? (
+              <p className="text-xs text-destructive">
+                Exceeds the {formatCurrency(sourceDocument.remainingCredit, sourceDocument.currency)} left to credit on {sourceDocument.invoiceNumber}. Reduce the lines before issuing.
+              </p>
+            ) : null}
             {currency !== BASE_CURRENCY ? (
               <SummaryRow label={`Equivalent in ${BASE_CURRENCY}`} value={formatCurrency(totals.totalInr, BASE_CURRENCY)} muted />
             ) : null}
@@ -559,15 +607,15 @@ export function InvoiceForm({ mode, invoiceId, currentStatus, clients, catalog, 
         <div className="flex flex-col gap-2">
           {mode === "create" || isDraftEdit ? (
             <>
-              <Button type="button" onClick={() => submitWithStatus("pending")} disabled={isSubmitting || clients.length === 0}>
-                {isSubmitting ? <Spinner /> : null} {mode === "create" ? "Issue invoice" : "Save & issue"}
+              <Button type="button" onClick={() => submitWithStatus("pending")} disabled={isSubmitting || clients.length === 0 || overCredit}>
+                {isSubmitting ? <Spinner /> : null} {mode === "create" ? `Issue ${label.toLowerCase()}` : "Save & issue"}
               </Button>
               <Button type="button" variant="outline" onClick={() => submitWithStatus("draft")} disabled={isSubmitting || clients.length === 0}>
                 {mode === "create" ? "Save as draft" : "Save draft"}
               </Button>
             </>
           ) : (
-            <Button type="button" onClick={() => submitWithStatus("pending")} disabled={isSubmitting}>
+            <Button type="button" onClick={() => submitWithStatus("pending")} disabled={isSubmitting || overCredit}>
               {isSubmitting ? <Spinner /> : null} Save changes
             </Button>
           )}

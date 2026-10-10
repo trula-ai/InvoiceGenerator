@@ -5,6 +5,7 @@ import { emailLogs } from "@/db/schema";
 import { getInvoiceDetail, markInvoiceSent } from "@/lib/data/invoices";
 import { notifyInvoiceEvent } from "@/lib/data/notifications";
 import { db } from "@/lib/db";
+import { documentLabel } from "@/lib/documents";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { pdfFileName, renderInvoicePdf } from "@/lib/pdf/render";
 
@@ -40,9 +41,12 @@ export async function sendInvoiceEmail(
 
   const to = (options.to ?? client.email ?? "").trim().toLowerCase();
   if (!to) throw new Error("The client has no email address. Add one to the client or enter a recipient.");
-  if (invoice.status === "cancelled") throw new Error("Cancelled invoices cannot be sent.");
+  const kind = invoice.documentKind;
+  const label = documentLabel(kind);
+  if (invoice.status === "cancelled") throw new Error(`Cancelled ${label.toLowerCase()}s cannot be sent.`);
 
   const props: InvoiceEmailProps = {
+    kind,
     businessName: business.name,
     clientName: client.contactName || client.name,
     invoiceNumber: invoice.invoiceNumber,
@@ -50,12 +54,13 @@ export async function sendInvoiceEmail(
     dueDate: formatDate(invoice.dueDate),
     totalFormatted: formatCurrency(invoice.total, invoice.currency),
     balanceFormatted: formatCurrency(invoice.balanceDue, invoice.currency),
+    sourceNumber: detail.source?.invoiceNumber ?? null,
     viewUrl: publicInvoiceUrl(invoice.publicToken),
     message: options.message,
-    bankDetails: business.bankDetails,
+    bankDetails: kind === "invoice" ? business.bankDetails : null,
   };
 
-  const subject = `Invoice ${invoice.invoiceNumber} from ${business.name}`;
+  const subject = `${label} ${invoice.invoiceNumber} from ${business.name}`;
   const provider = getEmailProvider();
 
   const [pdf, html] = await Promise.all([renderInvoicePdf(detail), render(createElement(InvoiceEmail, props))]);

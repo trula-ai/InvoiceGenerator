@@ -17,6 +17,7 @@ import { requireUser } from "@/lib/auth/current-user";
 import { getClient, getClientInvoiceHistory } from "@/lib/data/clients";
 import { PAYABLE_STATUSES } from "@/lib/data/invoices";
 import { BASE_CURRENCY } from "@/lib/currency";
+import { documentLabel, documentPath } from "@/lib/documents";
 import { isEmailConfigured } from "@/lib/email/provider";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { D, toMoney } from "@/lib/money";
@@ -30,7 +31,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
   if (!client) notFound();
 
   const emailConfigured = isEmailConfigured();
-  const issued = history.filter((i) => !["draft", "cancelled"].includes(i.status));
+  const issued = history.filter((i) => i.documentKind === "invoice" && !["draft", "cancelled"].includes(i.status));
   const outstandingInvoices = issued.filter((i) => PAYABLE_STATUSES.includes(i.status) && Number(i.balanceDue) > 0);
   const totalInr = toMoney(issued.reduce((acc, i) => acc.plus(D(i.totalInr)), D(0)));
   const outstandingInr = toMoney(
@@ -58,6 +59,9 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
         />
         <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/clients/${client.id}/edit`} />}>
           <Pencil /> Edit
+        </Button>
+        <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/quotes/new?client=${client.id}`} />}>
+          <Plus /> New quote
         </Button>
         <Button nativeButton={false} render={<Link href={`/dashboard/invoices/new?client=${client.id}`} />}>
           <Plus /> New invoice
@@ -91,9 +95,9 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
 
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Invoice history</CardTitle>
+            <CardTitle>Documents</CardTitle>
             <CardDescription>
-              {issued.length} issued · {formatCurrency(totalInr, BASE_CURRENCY)} invoiced ·{" "}
+              {issued.length} invoice{issued.length === 1 ? "" : "s"} issued · {formatCurrency(totalInr, BASE_CURRENCY)} invoiced ·{" "}
               <span className={Number(outstandingInr) > 0 ? "text-amber-600 dark:text-amber-400" : ""}>
                 {formatCurrency(outstandingInr, BASE_CURRENCY)} outstanding
               </span>
@@ -119,13 +123,16 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
                 </TableHeader>
                 <TableBody>
                   {history.map((inv) => {
-                    const payable = PAYABLE_STATUSES.includes(inv.status) && Number(inv.balanceDue) > 0;
+                    const payable = inv.documentKind === "invoice" && PAYABLE_STATUSES.includes(inv.status) && Number(inv.balanceDue) > 0;
                     return (
                       <TableRow key={inv.id}>
                         <TableCell className="font-medium">
-                          <Link href={`/dashboard/invoices/${inv.id}`} className="hover:underline">
+                          <Link href={documentPath(inv.documentKind, inv.id)} className="hover:underline">
                             {inv.invoiceNumber}
                           </Link>
+                          {inv.documentKind !== "invoice" ? (
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">{documentLabel(inv.documentKind)}</span>
+                          ) : null}
                         </TableCell>
                         <TableCell className="hidden text-muted-foreground sm:table-cell">{formatDate(inv.issueDate)}</TableCell>
                         <TableCell className="hidden text-muted-foreground md:table-cell">
@@ -135,9 +142,11 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
                           ) : null}
                         </TableCell>
                         <TableCell className="text-right font-medium tabular-nums">{formatCurrency(inv.total, inv.currency)}</TableCell>
-                        <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatCurrency(inv.balanceDue, inv.currency)}</TableCell>
+                        <TableCell className="hidden text-right tabular-nums sm:table-cell">
+                          {inv.documentKind === "invoice" ? formatCurrency(inv.balanceDue, inv.currency) : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
                         <TableCell>
-                          <StatusBadge status={inv.status} />
+                          <StatusBadge status={inv.status} kind={inv.documentKind} />
                         </TableCell>
                         <TableCell className="text-right">
                           {payable ? (

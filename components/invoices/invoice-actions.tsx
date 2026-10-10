@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Ban, BellRing, Copy, CopyPlus, Download, Eye, Link2, Mail, Pencil, Send, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Ban, BellRing, Check, Copy, CopyPlus, Download, Eye, FileMinus, Link2, Mail, Pencil, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -31,17 +31,21 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { RecordPaymentDialog } from "@/components/payments/record-payment-dialog";
-import type { InvoiceStatus } from "@/db/schema";
+import type { DocumentKind, InvoiceStatus } from "@/db/schema";
 import {
   cancelInvoiceAction,
+  convertQuoteAction,
   deleteDraftInvoiceAction,
   issueInvoiceAction,
+  respondToQuoteAction,
   sendInvoiceEmailAction,
   sendReminderEmailAction,
 } from "@/lib/actions/invoices";
+import { QUOTE_CONVERTIBLE_STATUSES, QUOTE_OPEN_STATUSES, documentBasePath, documentLabel, documentPath } from "@/lib/documents";
 import { publicInvoicePath } from "@/lib/email/urls";
 
 interface InvoiceActionsProps {
+  kind?: DocumentKind;
   invoiceId: string;
   invoiceNumber: string;
   status: InvoiceStatus;
@@ -49,15 +53,23 @@ interface InvoiceActionsProps {
   balanceDue: string;
   hasPayments: boolean;
   editable: boolean;
+  /** For quotes: already turned into an invoice. */
+  converted?: boolean;
   clientEmail: string | null;
   emailConfigured: boolean;
   publicToken: string;
 }
 
 export function InvoiceActions(props: InvoiceActionsProps) {
-  const { invoiceId, status, currency, balanceDue, hasPayments, editable, clientEmail, publicToken } = props;
+  const { kind = "invoice", invoiceId, status, currency, balanceDue, hasPayments, editable, converted = false, clientEmail, publicToken } = props;
   const [pending, startTransition] = useTransition();
-  const payable = ["pending", "partially_paid", "overdue"].includes(status);
+  const label = documentLabel(kind);
+  const lower = label.toLowerCase();
+  const isInvoice = kind === "invoice";
+  const payable = isInvoice && ["pending", "partially_paid", "overdue"].includes(status);
+  const issued = isInvoice && ["pending", "partially_paid", "paid", "overdue"].includes(status);
+  const quoteOpen = kind === "quote" && QUOTE_OPEN_STATUSES.includes(status);
+  const quoteConvertible = kind === "quote" && !converted && QUOTE_CONVERTIBLE_STATUSES.includes(status);
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, success: string) {
     startTransition(async () => {
@@ -71,7 +83,9 @@ export function InvoiceActions(props: InvoiceActionsProps) {
     const url = `${window.location.origin}${publicInvoicePath(publicToken)}`;
     try {
       await navigator.clipboard.writeText(url);
-      toast.success("Public invoice link copied", { description: "Anyone with the link can view and download this invoice." });
+      toast.success(`Public ${lower} link copied`, {
+        description: kind === "quote" ? "Anyone with the link can view the quote and accept or decline it." : `Anyone with the link can view and download this ${lower}.`,
+      });
     } catch {
       toast.error("Could not copy the link", { description: url });
     }
@@ -87,13 +101,13 @@ export function InvoiceActions(props: InvoiceActionsProps) {
       </Button>
 
       {status !== "draft" ? (
-        <Button variant="outline" onClick={copyLink} title="Copy the public, no-login link to this invoice">
+        <Button variant="outline" onClick={copyLink} title={`Copy the public, no-login link to this ${lower}`}>
           <Link2 /> Copy link
         </Button>
       ) : null}
 
       {status !== "cancelled" ? (
-        <EmailDialog kind="invoice" invoiceId={invoiceId} clientEmail={clientEmail} emailConfigured={props.emailConfigured} />
+        <EmailDialog kind="invoice" documentKind={kind} invoiceId={invoiceId} clientEmail={clientEmail} emailConfigured={props.emailConfigured} />
       ) : null}
 
       {payable ? (
@@ -103,39 +117,76 @@ export function InvoiceActions(props: InvoiceActionsProps) {
       {payable ? <RecordPaymentDialog invoiceId={invoiceId} currency={currency} balanceDue={balanceDue} /> : null}
 
       {status === "draft" ? (
-        <Button onClick={() => run(() => issueInvoiceAction(invoiceId), "Invoice issued")} disabled={pending}>
-          <Send /> Issue invoice
+        <Button onClick={() => run(() => issueInvoiceAction(invoiceId), `${label} issued`)} disabled={pending}>
+          <Send /> Issue {lower}
+        </Button>
+      ) : null}
+
+      {quoteOpen ? (
+        <>
+          <Button onClick={() => run(() => respondToQuoteAction(invoiceId, "accepted"), "Quote marked accepted")} disabled={pending}>
+            <Check /> Mark accepted
+          </Button>
+          <Button variant="outline" onClick={() => run(() => respondToQuoteAction(invoiceId, "declined"), "Quote marked declined")} disabled={pending}>
+            <X /> Mark declined
+          </Button>
+        </>
+      ) : null}
+
+      {quoteConvertible ? (
+        <Button
+          variant={status === "accepted" ? "default" : "outline"}
+          onClick={() => startTransition(async () => {
+            const result = await convertQuoteAction(invoiceId);
+            if (result && !result.ok) toast.error(result.error);
+          })}
+          disabled={pending}
+          title="Create an invoice with the same client and lines, dated today"
+        >
+          <ArrowRightLeft /> Convert to invoice
+        </Button>
+      ) : null}
+
+      {issued ? (
+        <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/credit-notes/new?invoice=${invoiceId}`} />} title="Credit all or part of this invoice">
+          <FileMinus /> Credit note
         </Button>
       ) : null}
 
       {editable ? (
-        <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/invoices/${invoiceId}/edit`} />}>
+        <Button variant="outline" nativeButton={false} render={<Link href={`${documentPath(kind, invoiceId)}/edit`} />}>
           <Pencil /> Edit
         </Button>
       ) : null}
 
-      <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/invoices/new?from=${invoiceId}`} />} title="Start a new invoice with the same client and items">
-        <CopyPlus /> Duplicate
-      </Button>
+      {kind !== "credit_note" ? (
+        <Button variant="outline" nativeButton={false} render={<Link href={`${documentBasePath(kind)}/new?from=${invoiceId}`} />} title={`Start a new ${lower} with the same client and items`}>
+          <CopyPlus /> Duplicate
+        </Button>
+      ) : null}
 
       {status === "draft" ? (
         <ConfirmButton
           title="Delete this draft?"
-          description="The draft and its items are removed permanently. The invoice number will not be reused."
+          description={`The draft and its items are removed permanently. The ${lower} number will not be reused.`}
           actionLabel="Delete draft"
           variant="destructive"
           icon={<Trash2 />}
           onConfirm={() => run(() => deleteDraftInvoiceAction(invoiceId), "Draft deleted")}
           disabled={pending}
         />
-      ) : status !== "cancelled" && status !== "paid" && !hasPayments ? (
+      ) : status !== "cancelled" && status !== "paid" && status !== "converted" && !hasPayments ? (
         <ConfirmButton
           title={`Cancel ${props.invoiceNumber}?`}
-          description="The invoice stays in your records marked as cancelled and is excluded from revenue."
-          actionLabel="Cancel invoice"
+          description={
+            kind === "credit_note"
+              ? "The credit is removed from the invoice it was applied to, and the credit note stays in your records marked as cancelled."
+              : `The ${lower} stays in your records marked as cancelled and is excluded from revenue.`
+          }
+          actionLabel={`Cancel ${lower}`}
           variant="destructive"
           icon={<Ban />}
-          onConfirm={() => run(() => cancelInvoiceAction(invoiceId), "Invoice cancelled")}
+          onConfirm={() => run(() => cancelInvoiceAction(invoiceId), `${label} cancelled`)}
           disabled={pending}
         />
       ) : null}
@@ -201,6 +252,7 @@ const EMAIL_COPY = {
 
 export function EmailDialog({
   kind,
+  documentKind = "invoice",
   invoiceId,
   clientEmail,
   emailConfigured,
@@ -208,6 +260,8 @@ export function EmailDialog({
   compact = false,
 }: {
   kind: keyof typeof EMAIL_COPY;
+  /** Which document the "invoice" email sends; changes the dialog wording. */
+  documentKind?: DocumentKind;
   invoiceId: string;
   clientEmail: string | null;
   emailConfigured: boolean;
@@ -215,7 +269,20 @@ export function EmailDialog({
   /** Icon-only trigger for table rows. */
   compact?: boolean;
 }) {
-  const copy = EMAIL_COPY[kind];
+  const docLabel = documentLabel(documentKind);
+  const copy =
+    kind === "invoice"
+      ? {
+          ...EMAIL_COPY.invoice,
+          title: `Send ${docLabel.toLowerCase()} by email`,
+          description:
+            documentKind === "quote"
+              ? "The quote PDF is attached and the email links to a page where the client can accept or decline."
+              : `The ${docLabel.toLowerCase()} PDF is attached automatically.`,
+          success: `${docLabel} emailed to`,
+          simulated: `${docLabel} email simulated to`,
+        }
+      : EMAIL_COPY[kind];
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState(clientEmail ?? "");
   const [message, setMessage] = useState("");

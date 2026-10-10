@@ -36,6 +36,10 @@ const KIND_ICONS: Record<NotificationKind, LucideIcon> = {
   reminder_sent: MailCheck,
   reminder_failed: MailWarning,
   statement_sent: Send,
+  quote_accepted: CircleCheck,
+  quote_declined: Ban,
+  quote_converted: FileText,
+  credit_note_issued: FileText,
 };
 
 interface NotificationCardProps {

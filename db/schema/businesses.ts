@@ -34,8 +34,14 @@ export const businesses = pgTable("businesses", {
   defaultCurrency: char({ length: 3 }).notNull().default("INR"),
   /** Prefix for generated invoice numbers, e.g. "INV" -> INV/2026-27/0001. */
   invoicePrefix: varchar({ length: 10 }).notNull().default("INV"),
+  /** Prefix for quote numbers, e.g. "QT" -> QT/2026-27/0001. */
+  quotePrefix: varchar({ length: 10 }).notNull().default("QT"),
+  /** Prefix for credit note numbers, e.g. "CN" -> CN/2026-27/0001. */
+  creditNotePrefix: varchar({ length: 10 }).notNull().default("CN"),
   /** Default payment terms in days, used to compute due dates. */
   paymentTermsDays: integer().notNull().default(15),
+  /** How long a new quote stays valid, in days. */
+  quoteValidityDays: integer().notNull().default(30),
   /** Free-text shown on every invoice (bank details, UPI id, etc.). */
   bankDetails: text(),
   /** Default notes / terms copied onto new invoices. */

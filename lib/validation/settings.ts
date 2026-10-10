@@ -2,6 +2,12 @@ import { z } from "zod";
 
 import { currencyCode, optionalEmail, optionalGstin, optionalStateCode, optionalText } from "./common";
 
+const numberPrefix = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9]{1,10}$/, "Letters and digits only, up to 10 characters");
+
 /** Optional PNG/JPEG data URL of at most ~300 KB. Empty string clears it. */
 const imageDataUrl = (label: string) =>
   z
@@ -29,12 +35,11 @@ export const businessSettingsSchema = z
     gstin: optionalGstin,
     pan: optionalText(10),
     defaultCurrency: currencyCode,
-    invoicePrefix: z
-      .string()
-      .trim()
-      .toUpperCase()
-      .regex(/^[A-Z0-9]{1,10}$/, "Letters and digits only, up to 10 characters"),
+    invoicePrefix: numberPrefix,
+    quotePrefix: numberPrefix,
+    creditNotePrefix: numberPrefix,
     paymentTermsDays: z.coerce.number().int().min(0).max(365),
+    quoteValidityDays: z.coerce.number().int().min(1, "At least 1 day").max(365),
     bankDetails: optionalText(2000),
     invoiceNotes: optionalText(2000),
     invoiceTerms: optionalText(4000),
@@ -54,6 +59,10 @@ export const businessSettingsSchema = z
   .refine((v) => !v.gstEnabled || !!v.stateCode, {
     message: "Business state is required when GST is enabled",
     path: ["stateCode"],
+  })
+  .refine((v) => new Set([v.invoicePrefix, v.quotePrefix, v.creditNotePrefix]).size === 3, {
+    message: "Invoice, quote and credit note prefixes must differ",
+    path: ["quotePrefix"],
   });
 
 export type BusinessSettingsInput = z.input<typeof businessSettingsSchema>;

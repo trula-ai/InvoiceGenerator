@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { searchAction, type SearchKind, type SearchResponse } from "@/lib/actions/search";
+import { documentLabel, documentPath } from "@/lib/documents";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 type ResultOf<K extends SearchKind> = Extract<SearchResponse, { kind: K }>["results"][number];
@@ -30,8 +31,10 @@ export function resultHref(kind: SearchKind, item: ResultOf<SearchKind>): string
       return `/dashboard/invoices/${(item as ResultOf<"payment">).invoiceId}`;
     case "history":
       return (item as ResultOf<"history">).href;
-    default:
-      return `/dashboard/invoices/${(item as ResultOf<"invoice">).id}`;
+    default: {
+      const inv = item as ResultOf<"invoice">;
+      return documentPath(inv.documentKind, inv.id);
+    }
   }
 }
 
@@ -134,12 +137,13 @@ export function SearchResultRow({ kind, item }: { kind: SearchKind; item: Result
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{inv.invoiceNumber}</span>
         <span className="block truncate text-xs text-muted-foreground">
+          {inv.documentKind !== "invoice" ? `${documentLabel(inv.documentKind)} · ` : ""}
           {inv.clientName} · {formatDate(inv.issueDate)}
         </span>
       </span>
       <span className="text-right text-xs tabular-nums">
         <span className="block font-medium">{formatCurrency(inv.total, inv.currency)}</span>
-        <StatusBadge status={inv.status} className="mt-0.5" />
+        <StatusBadge status={inv.status} kind={inv.documentKind} className="mt-0.5" />
       </span>
     </>
   );

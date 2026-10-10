@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
   varchar,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 import { businesses } from "./businesses";
@@ -20,15 +21,25 @@ import { clients, clientTypeEnum } from "./clients";
 import { items } from "./items";
 
 /**
- * Invoice lifecycle:
- *   draft -> pending -> partially_paid -> paid
- *                  \-> overdue (pending/partially_paid past due date)
- *   any (unpaid) -> cancelled
+ * One table holds every document kind because quotes, invoices and credit
+ * notes share the same shape (client, lines, tax, totals) and the same
+ * renderer, form and email pipeline. `documentKind` tells them apart and every
+ * list, report and reminder query filters on it.
+ *
+ *   invoice:     draft -> pending -> partially_paid -> paid
+ *                            \-> overdue (pending/partially_paid past due date)
+ *                any (unpaid) -> cancelled
+ *   quote:       draft -> pending (open) -> accepted | declined | expired -> converted
+ *                `dueDate` is the validity date.
+ *   credit_note: draft -> pending (issued) -> cancelled
+ *                Issuing applies the total to `sourceDocumentId`'s balance.
  *
  * `overdue` is persisted (not just derived) so it can be filtered and counted in
  * SQL. `lib/data/invoices.ts#syncOverdueStatuses` promotes past-due invoices
- * and `recalculateInvoiceStatus` recomputes after each payment.
+ * and `applyPaymentTotals` recomputes after each payment or credit.
  */
+export const documentKindEnum = pgEnum("document_kind", ["invoice", "quote", "credit_note"]);
+
 export const invoiceStatusEnum = pgEnum("invoice_status", [
   "draft",
   "pending",
@@ -36,6 +47,10 @@ export const invoiceStatusEnum = pgEnum("invoice_status", [
   "paid",
   "overdue",
   "cancelled",
+  "accepted",
+  "declined",
+  "expired",
+  "converted",
 ]);
 
 export const discountTypeEnum = pgEnum("discount_type", ["none", "percent", "fixed"]);
@@ -61,8 +76,15 @@ export const invoices = pgTable(
     publicToken: varchar({ length: 64 }).notNull(),
     /** Indian financial year label the number was issued in, e.g. "2026-27". */
     financialYear: char({ length: 7 }).notNull(),
+    documentKind: documentKindEnum().notNull().default("invoice"),
     invoiceType: clientTypeEnum().notNull(),
     status: invoiceStatusEnum().notNull().default("draft"),
+
+    // --- Links between documents ---------------------------------------------
+    /** Quote this invoice was converted from, or invoice this credit note is issued against. */
+    sourceDocumentId: uuid().references((): AnyPgColumn => invoices.id, { onDelete: "set null" }),
+    /** For quotes: the invoice created by "Convert to invoice". */
+    convertedToId: uuid().references((): AnyPgColumn => invoices.id, { onDelete: "set null" }),
 
     issueDate: date().notNull(),
     dueDate: date().notNull(),
@@ -109,6 +131,9 @@ export const invoices = pgTable(
     roundOffAmount: money().notNull().default("0"),
     total: money().notNull(),
     amountPaid: money().notNull().default("0"),
+    /** Sum of issued credit notes applied against this invoice. */
+    creditAmount: money().notNull().default("0"),
+    /** total - amountPaid - creditAmount, never below zero. */
     balanceDue: money().notNull(),
 
     // --- INR equivalents (frozen at creation) -------------------------------
@@ -128,6 +153,8 @@ export const invoices = pgTable(
     uniqueIndex("invoices_number_unique").on(t.businessId, t.invoiceNumber),
     uniqueIndex("invoices_public_token_unique").on(t.publicToken),
     index("invoices_business_status_idx").on(t.businessId, t.status),
+    index("invoices_business_kind_idx").on(t.businessId, t.documentKind),
+    index("invoices_source_idx").on(t.sourceDocumentId),
     index("invoices_business_issue_date_idx").on(t.businessId, t.issueDate),
     index("invoices_client_idx").on(t.clientId),
   ],
@@ -162,7 +189,7 @@ export const invoiceItems = pgTable(
   (t) => [index("invoice_items_invoice_idx").on(t.invoiceId)],
 );
 
-export const counterKindEnum = pgEnum("counter_kind", ["invoice", "receipt"]);
+export const counterKindEnum = pgEnum("counter_kind", ["invoice", "receipt", "quote", "credit_note"]);
 
 /**
  * Per-business, per-kind, per-financial-year sequence backing invoice and
@@ -188,4 +215,5 @@ export type NewInvoice = typeof invoices.$inferInsert;
 export type InvoiceItem = typeof invoiceItems.$inferSelect;
 export type NewInvoiceItem = typeof invoiceItems.$inferInsert;
 export type InvoiceStatus = (typeof invoiceStatusEnum.enumValues)[number];
+export type DocumentKind = (typeof documentKindEnum.enumValues)[number];
 export type DiscountType = (typeof discountTypeEnum.enumValues)[number];

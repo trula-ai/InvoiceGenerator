@@ -71,7 +71,15 @@ export default async function ReportsPage({ searchParams }: PageProps<"/dashboar
       </form>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Summary">
-        <Stat title="Invoiced" value={formatCurrency(summary.invoicedInr, BASE_CURRENCY)} hint={`${summary.invoiceCount} invoice${summary.invoiceCount === 1 ? "" : "s"}`} />
+        <Stat
+          title="Invoiced"
+          value={formatCurrency(summary.invoicedInr, BASE_CURRENCY)}
+          hint={
+            summary.creditNoteCount > 0
+              ? `${summary.invoiceCount} invoice${summary.invoiceCount === 1 ? "" : "s"} · net of ${formatCurrency(summary.creditedInr, BASE_CURRENCY)} credited`
+              : `${summary.invoiceCount} invoice${summary.invoiceCount === 1 ? "" : "s"}`
+          }
+        />
         <Stat title="Collected" value={formatCurrency(summary.collectedInr, BASE_CURRENCY)} hint={`${collectionRate}% of invoiced`} tone="success" />
         <Stat title="Outstanding" value={formatCurrency(summary.outstandingInr, BASE_CURRENCY)} hint={`${formatCurrency(summary.overdueInr, BASE_CURRENCY)} overdue`} tone={Number(summary.overdueInr) > 0 ? "danger" : "warning"} />
         <Stat title="Tax billed" value={formatCurrency(summary.taxInr, BASE_CURRENCY)} hint={`Avg invoice ${formatCurrency(summary.averageInvoiceInr, BASE_CURRENCY)}`} />

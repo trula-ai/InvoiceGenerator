@@ -96,7 +96,9 @@ export async function runReminderSchedule(businessId: string, today = todayIso()
     })
     .from(invoices)
     .innerJoin(clients, eq(clients.id, invoices.clientId))
-    .where(and(eq(invoices.businessId, businessId), inArray(invoices.status, PAYABLE_STATUSES), sql`${invoices.balanceDue} > 0`));
+    .where(
+      and(eq(invoices.businessId, businessId), eq(invoices.documentKind, "invoice"), inArray(invoices.status, PAYABLE_STATUSES), sql`${invoices.balanceDue} > 0`),
+    );
 
   for (const inv of rows) {
     const plan = reminderStageFor(inv.dueDate, today, settings);

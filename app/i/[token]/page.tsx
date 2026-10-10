@@ -7,15 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { QuoteResponseButtons } from "@/components/public/quote-response-buttons";
 import { amountInWords } from "@/lib/amount-in-words";
 import { BASE_CURRENCY } from "@/lib/currency";
 import { getInvoiceDetailByToken } from "@/lib/data/invoices";
+import { QUOTE_OPEN_STATUSES, documentLabel, secondDateLabel, statusLabel } from "@/lib/documents";
 import { formatCurrency, formatDate, formatRate } from "@/lib/format";
 import { summariseByHsn } from "@/lib/hsn-summary";
 import { D, isZero } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validation/payment";
 
-export const metadata: Metadata = { title: "Invoice", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Document", robots: { index: false, follow: false } };
 
 /**
  * Public, read-only invoice page reached from the link in invoice emails.
@@ -27,10 +29,13 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
   const detail = await getInvoiceDetailByToken(token);
   if (!detail) notFound();
 
-  const { invoice, client, business, items, payments } = detail;
+  const { invoice, client, business, items, payments, source } = detail;
+  const kind = invoice.documentKind;
   const cur = invoice.currency;
   const showGst = invoice.gstApplied;
-  const title = invoice.invoiceType === "b2b" && showGst ? "Tax invoice" : "Invoice";
+  const title = kind === "invoice" ? (invoice.invoiceType === "b2b" && showGst ? "Tax invoice" : "Invoice") : documentLabel(kind);
+  const isInvoice = kind === "invoice";
+  const quoteOpen = kind === "quote" && QUOTE_OPEN_STATUSES.includes(invoice.status);
   const businessAddress = compact([business.addressLine1, business.addressLine2, [business.city, business.state, business.postalCode].filter(Boolean).join(", "), business.country]);
   const clientAddress = compact([client.addressLine1, client.addressLine2, [client.city, client.state, client.postalCode].filter(Boolean).join(", "), client.country]);
   const settled = invoice.status === "paid";
@@ -74,7 +79,7 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
                 <CardTitle className="font-mono text-2xl">{invoice.invoiceNumber}</CardTitle>
               </div>
               <div className="flex items-center gap-2">
-                <StatusBadge status={invoice.status} />
+                <StatusBadge status={invoice.status} kind={kind} />
                 <Badge variant="secondary" className="uppercase">
                   {invoice.invoiceType}
                 </Badge>
@@ -82,7 +87,8 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
             </div>
             <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
               <Meta label="Issued" value={formatDate(invoice.issueDate)} />
-              <Meta label="Due" value={formatDate(invoice.dueDate)} />
+              <Meta label={secondDateLabel(kind)} value={formatDate(invoice.dueDate)} />
+              {source ? <Meta label={kind === "credit_note" ? "Against invoice" : `From ${documentLabel(source.documentKind).toLowerCase()}`} value={source.invoiceNumber} /> : null}
               <Meta label="Currency" value={cur !== BASE_CURRENCY ? `${cur} · 1 ${cur} = ${formatRate(invoice.exchangeRate)} ${BASE_CURRENCY}` : cur} />
               {invoice.poNumber ? <Meta label="PO number" value={invoice.poNumber} /> : null}
               {invoice.reference ? <Meta label="Reference" value={invoice.reference} /> : null}
@@ -149,19 +155,43 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
                 <Line label="Round off" value={`${roundOff.greaterThan(0) ? "+" : "-"} ${formatCurrency(roundOff.abs().toFixed(2), cur)}`} />
               ) : null}
               <div className="flex items-center justify-between border-t pt-2 text-base font-semibold">
-                <span>Total</span>
+                <span>{kind === "credit_note" ? "Credit total" : "Total"}</span>
                 <span>{formatCurrency(invoice.total, cur)}</span>
               </div>
               <p className="text-xs text-muted-foreground">{amountInWords(invoice.total, cur)}</p>
-              {!isZero(invoice.amountPaid) ? <Line label="Paid" value={formatCurrency(invoice.amountPaid, cur)} /> : null}
-              <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-base font-semibold ${settled ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-primary/5"}`}>
-                <span className="flex items-center gap-1.5">
-                  {settled ? <CheckCircle2 className="size-4" /> : null}
-                  {settled ? "Paid in full" : "Balance due"}
-                </span>
-                <span>{formatCurrency(invoice.balanceDue, cur)}</span>
-              </div>
+              {isInvoice && !isZero(invoice.amountPaid) ? <Line label="Paid" value={formatCurrency(invoice.amountPaid, cur)} /> : null}
+              {isInvoice && !isZero(invoice.creditAmount) ? <Line label="Credit notes applied" value={`- ${formatCurrency(invoice.creditAmount, cur)}`} /> : null}
+              {isInvoice ? (
+                <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-base font-semibold ${settled ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-primary/5"}`}>
+                  <span className="flex items-center gap-1.5">
+                    {settled ? <CheckCircle2 className="size-4" /> : null}
+                    {settled ? "Paid in full" : "Balance due"}
+                  </span>
+                  <span>{formatCurrency(invoice.balanceDue, cur)}</span>
+                </div>
+              ) : null}
             </div>
+
+            {kind === "quote" ? (
+              <div className="rounded-lg bg-muted/60 p-4 text-sm">
+                {quoteOpen ? (
+                  <>
+                    <p className="mb-1 font-medium">Do you accept this quote?</p>
+                    <p className="mb-3 text-muted-foreground">
+                      {invoice.status === "expired"
+                        ? `This quote passed its validity date on ${formatDate(invoice.dueDate)}, but you can still respond and ${business.name} will confirm.`
+                        : `Valid until ${formatDate(invoice.dueDate)}. Accepting lets ${business.name} invoice you for the amount above.`}
+                    </p>
+                    <QuoteResponseButtons token={token} />
+                  </>
+                ) : (
+                  <p className="font-medium">
+                    This quote is {statusLabel(invoice.status, "quote").toLowerCase()}
+                    {invoice.status === "converted" ? " and has been invoiced" : ""}.
+                  </p>
+                )}
+              </div>
+            ) : null}
 
             {hsnRows.length ? (
               <div className="text-sm">
@@ -207,7 +237,7 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
               </div>
             ) : null}
 
-            {payments.length > 0 ? (
+            {isInvoice && payments.length > 0 ? (
               <div className="text-sm">
                 <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Payments received</p>
                 <ul className="divide-y rounded-lg ring-1 ring-foreground/10">
@@ -224,7 +254,7 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
               </div>
             ) : null}
 
-            {!settled && business.bankDetails ? (
+            {isInvoice && !settled && business.bankDetails ? (
               <div className="rounded-lg bg-muted/60 p-4 text-sm">
                 <p className="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">How to pay</p>
                 <p className="whitespace-pre-line">{business.bankDetails}</p>
@@ -251,7 +281,7 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
         </Card>
 
         <p className="text-center text-xs text-muted-foreground">
-          Questions about this invoice? Reply to the email it arrived with{business.email ? ` or write to ${business.email}` : ""}.
+          Questions about this {documentLabel(kind).toLowerCase()}? Reply to the email it arrived with{business.email ? ` or write to ${business.email}` : ""}.
         </p>
       </div>
     </main>

@@ -31,8 +31,11 @@ const SECTION_FIELDS: Record<SectionId, (keyof BusinessSettingsInput)[]> = {
   tax: ["gstEnabled", "gstin"],
   invoice: [
     "invoicePrefix",
+    "quotePrefix",
+    "creditNotePrefix",
     "defaultCurrency",
     "paymentTermsDays",
+    "quoteValidityDays",
     "roundTotals",
     "signatoryName",
     "signatureDataUrl",
@@ -89,7 +92,10 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
       pan: business.pan ?? "",
       defaultCurrency: business.defaultCurrency,
       invoicePrefix: business.invoicePrefix,
+      quotePrefix: business.quotePrefix,
+      creditNotePrefix: business.creditNotePrefix,
       paymentTermsDays: business.paymentTermsDays,
+      quoteValidityDays: business.quoteValidityDays,
       bankDetails: business.bankDetails ?? "",
       invoiceNotes: business.invoiceNotes ?? "",
       invoiceTerms: business.invoiceTerms ?? "",
@@ -321,6 +327,25 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
                 <FieldLabel htmlFor="paymentTermsDays">Payment terms (days)</FieldLabel>
                 <Input id="paymentTermsDays" type="number" min={0} max={365} {...form.register("paymentTermsDays")} />
                 <FieldError errors={[errors.paymentTermsDays]} />
+              </Field>
+            </div>
+            <div className="grid gap-5 sm:grid-cols-3">
+              <Field data-invalid={!!errors.quotePrefix}>
+                <FieldLabel htmlFor="quotePrefix">Quote prefix</FieldLabel>
+                <Input id="quotePrefix" className="uppercase" {...form.register("quotePrefix")} />
+                <FieldDescription>Quotes are numbered separately, e.g. QT/{currentFinancialYear()}/0001.</FieldDescription>
+                <FieldError errors={[errors.quotePrefix]} />
+              </Field>
+              <Field data-invalid={!!errors.creditNotePrefix}>
+                <FieldLabel htmlFor="creditNotePrefix">Credit note prefix</FieldLabel>
+                <Input id="creditNotePrefix" className="uppercase" {...form.register("creditNotePrefix")} />
+                <FieldError errors={[errors.creditNotePrefix]} />
+              </Field>
+              <Field data-invalid={!!errors.quoteValidityDays}>
+                <FieldLabel htmlFor="quoteValidityDays">Quote validity (days)</FieldLabel>
+                <Input id="quoteValidityDays" type="number" min={1} max={365} {...form.register("quoteValidityDays")} />
+                <FieldDescription>New quotes expire this many days after issue.</FieldDescription>
+                <FieldError errors={[errors.quoteValidityDays]} />
               </Field>
             </div>
             <Field orientation="horizontal">

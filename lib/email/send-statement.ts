@@ -59,6 +59,7 @@ export async function sendClientStatementEmail(businessId: string, clientId: str
     .where(
       and(
         eq(invoices.businessId, businessId),
+        eq(invoices.documentKind, "invoice"),
         eq(invoices.clientId, clientId),
         inArray(invoices.status, PAYABLE_STATUSES),
         sql`${invoices.balanceDue} > 0`,

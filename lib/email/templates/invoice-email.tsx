@@ -11,14 +11,21 @@ import {
   Text,
 } from "@react-email/components";
 
+import type { DocumentKind } from "@/db/schema";
+import { documentLabel } from "@/lib/documents";
+
 export interface InvoiceEmailProps {
+  kind: DocumentKind;
   businessName: string;
   clientName: string;
   invoiceNumber: string;
   issueDate: string;
+  /** Due date for invoices, validity date for quotes, credit date for credit notes. */
   dueDate: string;
   totalFormatted: string;
   balanceFormatted: string;
+  /** Invoice number a credit note is issued against. */
+  sourceNumber?: string | null;
   viewUrl?: string;
   message?: string;
   bankDetails?: string | null;
@@ -37,37 +44,72 @@ const styles = {
   pre: { whiteSpace: "pre-wrap" as const, color: "#3f3f46", fontSize: 13, lineHeight: "20px" },
 };
 
+/** Default body copy per document kind. */
+function intro(props: InvoiceEmailProps): string {
+  switch (props.kind) {
+    case "quote":
+      return `Please find attached quote ${props.invoiceNumber} from ${props.businessName}. It is valid until ${props.dueDate}; you can accept or decline it online.`;
+    case "credit_note":
+      return `Please find attached credit note ${props.invoiceNumber} from ${props.businessName}${props.sourceNumber ? ` against invoice ${props.sourceNumber}` : ""}. The PDF is attached to this email.`;
+    default:
+      return `Please find attached invoice ${props.invoiceNumber} from ${props.businessName}. The PDF is attached to this email.`;
+  }
+}
+
+/** Label/value pairs shown in the summary block. */
+function summaryRows(props: InvoiceEmailProps): [string, string][] {
+  switch (props.kind) {
+    case "quote":
+      return [
+        ["Quoted amount", props.totalFormatted],
+        ["Issued", props.issueDate],
+        ["Valid until", props.dueDate],
+      ];
+    case "credit_note":
+      return [
+        ["Credit amount", props.totalFormatted],
+        ...(props.sourceNumber ? ([["Against invoice", props.sourceNumber]] as [string, string][]) : []),
+        ["Date", props.issueDate],
+      ];
+    default:
+      return [
+        ["Amount due", props.balanceFormatted],
+        ["Invoice total", props.totalFormatted],
+        ["Issued", props.issueDate],
+        ["Due", props.dueDate],
+      ];
+  }
+}
+
 export function InvoiceEmail(props: InvoiceEmailProps) {
+  const label = documentLabel(props.kind);
   return (
     <Html>
       <Head />
       <Preview>
-        Invoice {props.invoiceNumber} from {props.businessName}
+        {label} {props.invoiceNumber} from {props.businessName}
       </Preview>
       <Body style={styles.body}>
         <Container style={styles.container}>
-          <Heading style={styles.heading}>Invoice {props.invoiceNumber}</Heading>
+          <Heading style={styles.heading}>
+            {label} {props.invoiceNumber}
+          </Heading>
           <Text style={styles.text}>Hi {props.clientName},</Text>
-          <Text style={styles.text}>
-            {props.message?.trim() ||
-              `Please find attached invoice ${props.invoiceNumber} from ${props.businessName}. The PDF is attached to this email.`}
-          </Text>
+          <Text style={styles.text}>{props.message?.trim() || intro(props)}</Text>
 
           <Section>
-            <Text style={styles.label}>Amount due</Text>
-            <Text style={styles.value}>{props.balanceFormatted}</Text>
-            <Text style={styles.label}>Invoice total</Text>
-            <Text style={styles.value}>{props.totalFormatted}</Text>
-            <Text style={styles.label}>Issued</Text>
-            <Text style={styles.value}>{props.issueDate}</Text>
-            <Text style={styles.label}>Due</Text>
-            <Text style={styles.value}>{props.dueDate}</Text>
+            {summaryRows(props).map(([k, v]) => (
+              <div key={k}>
+                <Text style={styles.label}>{k}</Text>
+                <Text style={styles.value}>{v}</Text>
+              </div>
+            ))}
           </Section>
 
           {props.viewUrl ? (
             <Section style={{ margin: "8px 0 4px" }}>
               <Button href={props.viewUrl} style={styles.button}>
-                View invoice
+                {props.kind === "quote" ? "View and respond" : `View ${label.toLowerCase()}`}
               </Button>
             </Section>
           ) : null}
@@ -89,16 +131,14 @@ export function InvoiceEmail(props: InvoiceEmailProps) {
 }
 
 export function invoiceEmailText(props: InvoiceEmailProps): string {
+  const label = documentLabel(props.kind);
   return [
-    `Invoice ${props.invoiceNumber} from ${props.businessName}`,
+    `${label} ${props.invoiceNumber} from ${props.businessName}`,
     "",
     `Hi ${props.clientName},`,
-    props.message?.trim() || `Please find attached invoice ${props.invoiceNumber}.`,
+    props.message?.trim() || intro(props),
     "",
-    `Amount due: ${props.balanceFormatted}`,
-    `Invoice total: ${props.totalFormatted}`,
-    `Issued: ${props.issueDate}`,
-    `Due: ${props.dueDate}`,
+    ...summaryRows(props).map(([k, v]) => `${k}: ${v}`),
     props.viewUrl ? `\nView online: ${props.viewUrl}` : "",
     props.bankDetails ? `\nPayment details:\n${props.bankDetails}` : "",
   ]

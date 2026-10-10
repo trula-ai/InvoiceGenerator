@@ -1,4 +1,6 @@
+import type { DocumentKind } from "@/db/schema";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
+import { documentStatuses, statusLabel } from "@/lib/documents";
 import { INDIA_STATES } from "@/lib/india-states";
 import { INVOICE_STATUS_LABELS } from "@/lib/format";
 import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS } from "@/lib/validation/payment";
@@ -34,6 +36,11 @@ export const INVOICE_TYPE_OPTIONS: SelectOption[] = [
 export const INVOICE_STATUS_OPTIONS: SelectOption[] = (
   ["draft", "pending", "partially_paid", "paid", "overdue", "cancelled"] as const
 ).map((s) => ({ value: s, label: INVOICE_STATUS_LABELS[s] }));
+
+/** Status filter choices worded for a document kind. */
+export function statusOptionsFor(kind: DocumentKind): SelectOption[] {
+  return documentStatuses(kind).map((s) => ({ value: s, label: statusLabel(s, kind) }));
+}
 
 export const PAYMENT_METHOD_OPTIONS: SelectOption[] = PAYMENT_METHODS.map((m) => ({
   value: m,

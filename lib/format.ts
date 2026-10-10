@@ -77,4 +77,8 @@ export const INVOICE_STATUS_LABELS: Record<string, string> = {
   paid: "Paid",
   overdue: "Overdue",
   cancelled: "Cancelled",
+  accepted: "Accepted",
+  declined: "Declined",
+  expired: "Expired",
+  converted: "Converted",
 };

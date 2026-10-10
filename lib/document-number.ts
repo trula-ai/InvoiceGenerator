@@ -24,7 +24,7 @@ import { financialYearFor } from "@/lib/fiscal-year";
  * index on (business_id, invoice_number) is a second line of defence.
  */
 
-export type CounterKind = "invoice" | "receipt";
+export type CounterKind = "invoice" | "receipt" | "quote" | "credit_note";
 
 type Executor = Pick<Database, "execute">;
 
@@ -50,6 +50,19 @@ export function formatDocumentNumber(prefix: string, financialYear: string, sequ
   return `${prefix}/${financialYear}/${sequence.toString().padStart(4, "0")}`;
 }
 
+/** Allocates the next number of a given kind (invoice, quote, credit note) for an issue date, inside `tx`. */
+export async function nextDocumentNumber(
+  tx: Executor,
+  businessId: string,
+  kind: Exclude<CounterKind, "receipt">,
+  prefix: string,
+  issueDate: string,
+): Promise<{ invoiceNumber: string; financialYear: string }> {
+  const financialYear = financialYearFor(issueDate);
+  const seq = await nextSequenceNumber(tx, businessId, kind, financialYear);
+  return { invoiceNumber: formatDocumentNumber(prefix, financialYear, seq), financialYear };
+}
+
 /** Allocates the next invoice number for an issue date, inside `tx`. */
 export async function nextInvoiceNumber(
   tx: Executor,
@@ -57,9 +70,7 @@ export async function nextInvoiceNumber(
   prefix: string,
   issueDate: string,
 ): Promise<{ invoiceNumber: string; financialYear: string }> {
-  const financialYear = financialYearFor(issueDate);
-  const seq = await nextSequenceNumber(tx, businessId, "invoice", financialYear);
-  return { invoiceNumber: formatDocumentNumber(prefix, financialYear, seq), financialYear };
+  return nextDocumentNumber(tx, businessId, "invoice", prefix, issueDate);
 }
 
 /** Allocates the next receipt number for a payment date, inside `tx`. */

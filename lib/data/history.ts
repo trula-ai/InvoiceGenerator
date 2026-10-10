@@ -40,7 +40,7 @@ export async function getTransactionHistory(businessId: string, filters: History
   const entries: HistoryEntry[] = [];
 
   if (filters.kind !== "payment") {
-    const conditions = [eq(invoices.businessId, businessId)];
+    const conditions = [eq(invoices.businessId, businessId), eq(invoices.documentKind, "invoice")];
     if (filters.clientId) conditions.push(eq(invoices.clientId, filters.clientId));
     if (filters.from) conditions.push(gte(invoices.issueDate, filters.from));
     if (filters.to) conditions.push(lte(invoices.issueDate, filters.to));

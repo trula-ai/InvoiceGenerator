@@ -4,12 +4,14 @@ import {
   clients,
   invoices,
   notifications,
+  type DocumentKind,
   type InvoiceStatus,
   type Notification,
   type NotificationKind,
   type NotificationSeverity,
 } from "@/db/schema";
 import { db, type Database } from "@/lib/db";
+import { documentLabel, documentPath } from "@/lib/documents";
 import { addDaysIso, todayIso } from "@/lib/fiscal-year";
 import { formatCurrency, formatDate } from "@/lib/format";
 
@@ -45,6 +47,7 @@ export interface NotificationInput {
 
 export interface InvoiceSnapshot {
   id: string;
+  documentKind: DocumentKind;
   invoiceNumber: string;
   clientName: string;
   clientEmail: string | null;
@@ -69,6 +72,10 @@ const SEVERITY_BY_KIND: Record<NotificationKind, NotificationSeverity> = {
   reminder_sent: "success",
   reminder_failed: "warning",
   statement_sent: "success",
+  quote_accepted: "success",
+  quote_declined: "warning",
+  quote_converted: "info",
+  credit_note_issued: "info",
 };
 
 export function daysBetweenIso(fromIso: string, toIso: string): number {
@@ -107,6 +114,7 @@ export async function loadInvoiceSnapshot(businessId: string, invoiceId: string,
   const [row] = await tx
     .select({
       id: invoices.id,
+      documentKind: invoices.documentKind,
       invoiceNumber: invoices.invoiceNumber,
       clientName: clients.name,
       clientEmail: clients.email,
@@ -142,6 +150,7 @@ export interface InvoiceEventExtra {
 /** Builds the human-readable notification for an invoice lifecycle event. */
 export function describeInvoiceEvent(kind: InvoiceEventKind, inv: InvoiceSnapshot, extra: InvoiceEventExtra = {}): NotificationInput {
   const money = (v: string) => formatCurrency(v, inv.currency);
+  const label = documentLabel(inv.documentKind);
   const base: NotificationInput = {
     kind,
     title: "",
@@ -151,7 +160,7 @@ export function describeInvoiceEvent(kind: InvoiceEventKind, inv: InvoiceSnapsho
     clientName: inv.clientName,
     currency: inv.currency,
     dueDate: inv.dueDate,
-    href: `/dashboard/invoices/${inv.id}`,
+    href: documentPath(inv.documentKind, inv.id),
   };
 
   switch (kind) {
@@ -159,15 +168,49 @@ export function describeInvoiceEvent(kind: InvoiceEventKind, inv: InvoiceSnapsho
       return {
         ...base,
         amount: inv.total,
-        title: `Invoice ${inv.invoiceNumber} issued`,
-        body: `${inv.clientName} has been billed ${money(inv.total)}, due by ${formatDate(inv.dueDate)}.`,
+        title: `${label} ${inv.invoiceNumber} issued`,
+        body:
+          inv.documentKind === "quote"
+            ? `${inv.clientName} was quoted ${money(inv.total)}, valid until ${formatDate(inv.dueDate)}.`
+            : `${inv.clientName} has been billed ${money(inv.total)}, due by ${formatDate(inv.dueDate)}.`,
       };
     case "invoice_sent":
       return {
         ...base,
-        amount: inv.balanceDue,
-        title: `Invoice ${inv.invoiceNumber} emailed`,
-        body: `Sent to ${extra.to ?? inv.clientEmail ?? inv.clientName}. ${money(inv.balanceDue)} is due by ${formatDate(inv.dueDate)}.`,
+        amount: inv.documentKind === "invoice" ? inv.balanceDue : inv.total,
+        title: `${label} ${inv.invoiceNumber} emailed`,
+        body:
+          inv.documentKind === "invoice"
+            ? `Sent to ${extra.to ?? inv.clientEmail ?? inv.clientName}. ${money(inv.balanceDue)} is due by ${formatDate(inv.dueDate)}.`
+            : `Sent to ${extra.to ?? inv.clientEmail ?? inv.clientName} for ${money(inv.total)}.`,
+      };
+    case "quote_accepted":
+      return {
+        ...base,
+        amount: inv.total,
+        title: `Quote ${inv.invoiceNumber} accepted`,
+        body: `${inv.clientName} accepted the ${money(inv.total)} quote. Convert it to an invoice when you are ready to bill.`,
+      };
+    case "quote_declined":
+      return {
+        ...base,
+        amount: inv.total,
+        title: `Quote ${inv.invoiceNumber} declined`,
+        body: `${inv.clientName} declined the ${money(inv.total)} quote.`,
+      };
+    case "quote_converted":
+      return {
+        ...base,
+        amount: inv.total,
+        title: `Quote ${inv.invoiceNumber} converted to an invoice`,
+        body: `${inv.clientName} will now be billed ${money(inv.total)}.`,
+      };
+    case "credit_note_issued":
+      return {
+        ...base,
+        amount: inv.total,
+        title: `Credit note ${inv.invoiceNumber} issued`,
+        body: `${money(inv.total)} has been credited to ${inv.clientName} and applied to the original invoice.`,
       };
     case "payment_received":
       return {
@@ -187,8 +230,8 @@ export function describeInvoiceEvent(kind: InvoiceEventKind, inv: InvoiceSnapsho
       return {
         ...base,
         amount: inv.total,
-        title: `Invoice ${inv.invoiceNumber} cancelled`,
-        body: `The ${money(inv.total)} invoice to ${inv.clientName} was cancelled.`,
+        title: `${label} ${inv.invoiceNumber} cancelled`,
+        body: `The ${money(inv.total)} ${label.toLowerCase()} to ${inv.clientName} was cancelled.`,
       };
     case "reminder_sent":
       return {
@@ -238,7 +281,9 @@ export async function syncPaymentNotifications(businessId: string, today = today
     })
     .from(invoices)
     .innerJoin(clients, eq(clients.id, invoices.clientId))
-    .where(and(eq(invoices.businessId, businessId), inArray(invoices.status, PAYABLE), sql`${invoices.balanceDue} > 0`));
+    .where(
+      and(eq(invoices.businessId, businessId), eq(invoices.documentKind, "invoice"), inArray(invoices.status, PAYABLE), sql`${invoices.balanceDue} > 0`),
+    );
 
   const soonLimit = addDaysIso(today, DUE_SOON_DAYS);
   const values: (typeof notifications.$inferInsert)[] = [];

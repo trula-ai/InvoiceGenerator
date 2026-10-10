@@ -23,8 +23,10 @@ export interface ClientListFilters {
   includeArchived?: boolean;
 }
 
-const ISSUED = sql`${invoices.status} in ('pending', 'partially_paid', 'paid', 'overdue')`;
-const UNPAID = sql`${invoices.status} in ('pending', 'partially_paid', 'overdue')`;
+const ISSUED = sql`${invoices.documentKind} = 'invoice' and ${invoices.status} in ('pending', 'partially_paid', 'paid', 'overdue')`;
+const UNPAID = sql`${invoices.documentKind} = 'invoice' and ${invoices.status} in ('pending', 'partially_paid', 'overdue')`;
+/** Issued credit notes reduce what a client has been invoiced, matching the dashboard and reports. */
+const CREDITED = sql`${invoices.documentKind} = 'credit_note' and ${invoices.status} = 'pending'`;
 
 export async function listClients(businessId: string, filters: ClientListFilters = {}): Promise<ClientListItem[]> {
   const conditions = [eq(clients.businessId, businessId)];
@@ -47,7 +49,7 @@ export async function listClients(businessId: string, filters: ClientListFilters
     .select({
       client: clients,
       invoiceCount: sql<number>`count(${invoices.id}) filter (where ${ISSUED})`.mapWith(Number),
-      totalInvoicedInr: sql<string>`coalesce(sum(${invoices.totalInr}) filter (where ${ISSUED}), 0)::text`,
+      totalInvoicedInr: sql<string>`(coalesce(sum(${invoices.totalInr}) filter (where ${ISSUED}), 0) - coalesce(sum(${invoices.totalInr}) filter (where ${CREDITED}), 0))::numeric(14,2)::text`,
       outstandingInr: sql<string>`coalesce(sum(${invoices.balanceDue} * ${invoices.exchangeRate}) filter (where ${UNPAID}), 0)::numeric(14,2)::text`,
     })
     .from(clients)
@@ -103,6 +105,7 @@ export async function getClientInvoiceHistory(businessId: string, clientId: stri
     .select({
       id: invoices.id,
       invoiceNumber: invoices.invoiceNumber,
+      documentKind: invoices.documentKind,
       issueDate: invoices.issueDate,
       dueDate: invoices.dueDate,
       status: invoices.status,
