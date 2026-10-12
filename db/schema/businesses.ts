@@ -58,6 +58,12 @@ export const businesses = pgTable("businesses", {
   /** Name printed under the signature, e.g. "Priya Sharma, Director". */
   signatoryName: varchar({ length: 120 }),
 
+  // --- Online payments & automatic sending ---------------------------------
+  /** Show "Pay now" (Razorpay Checkout) on public invoice pages when the gateway is configured. */
+  onlinePaymentsEnabled: boolean().notNull().default(true),
+  /** Email the invoice to the client automatically when it is issued. */
+  autoEmailInvoices: boolean().notNull().default(true),
+
   // --- Automatic payment reminders ----------------------------------------
   /** Master switch for scheduled reminder emails (lib/email/due-reminders.ts). */
   remindersEnabled: boolean().notNull().default(true),

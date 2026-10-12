@@ -262,6 +262,11 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
                       <TableRow key={p.id}>
                         <TableCell className="font-medium">
                           {p.receiptNumber}
+                          {p.provider !== "manual" ? (
+                            <Badge variant="secondary" className="ml-2 h-4 px-1.5 text-[10px] capitalize">
+                              {p.provider}
+                            </Badge>
+                          ) : null}
                           {p.reference ? <span className="block text-xs font-normal text-muted-foreground">{p.reference}</span> : null}
                         </TableCell>
                         <TableCell className="text-muted-foreground">{formatDate(p.paymentDate)}</TableCell>

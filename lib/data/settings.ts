@@ -36,6 +36,8 @@ export async function updateBusinessSettings(businessId: string, values: Busines
       roundTotals: values.roundTotals,
       signatureDataUrl: values.signatureDataUrl ?? null,
       signatoryName: values.signatoryName ?? null,
+      onlinePaymentsEnabled: values.onlinePaymentsEnabled,
+      autoEmailInvoices: values.autoEmailInvoices,
       remindersEnabled: values.remindersEnabled,
       reminderDaysBefore: values.reminderDaysBefore,
       reminderOverdueEveryDays: values.reminderOverdueEveryDays,

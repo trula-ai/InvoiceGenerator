@@ -1,4 +1,4 @@
-import { date, index, numeric, pgEnum, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { date, index, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 
 import { businesses } from "./businesses";
 import { invoices } from "./invoices";
@@ -36,11 +36,17 @@ export const payments = pgTable(
     /** Transaction id, cheque number, UTR, etc. */
     reference: varchar({ length: 120 }),
     notes: text(),
+    /** "manual" for payments typed in by the business, or the gateway name ("razorpay"). */
+    provider: varchar({ length: 20 }).notNull().default("manual"),
+    /** Gateway payment id; unique so a checkout callback and a webhook can never double-record. */
+    providerPaymentId: varchar({ length: 80 }),
+    providerOrderId: varchar({ length: 80 }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("payments_business_date_idx").on(t.businessId, t.paymentDate),
     index("payments_invoice_idx").on(t.invoiceId),
+    uniqueIndex("payments_provider_payment_unique").on(t.provider, t.providerPaymentId),
   ],
 );
 

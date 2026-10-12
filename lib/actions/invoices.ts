@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { invoices, type DocumentKind } from "@/db/schema";
+import { invoices, type Business, type DocumentKind } from "@/db/schema";
 import { requireUser } from "@/lib/auth/current-user";
 import { getRateToInr, type RateQuote } from "@/lib/data/exchange-rates";
 import {
@@ -37,6 +38,29 @@ function revalidateDocuments(kind?: DocumentKind, id?: string) {
   revalidatePath("/dashboard/history");
   revalidatePath("/dashboard/notifications");
   if (kind && id) revalidatePath(documentPath(kind, id));
+}
+
+/**
+ * Emails a freshly issued invoice to the client after the response is sent,
+ * when the business has automatic sending on and the client has an email.
+ * Failures are logged (and recorded in email_logs by the sender) but never
+ * block issuing.
+ */
+function autoEmailInvoice(business: Business, invoiceId: string) {
+  if (!business.autoEmailInvoices) return;
+  after(async () => {
+    try {
+      const [row] = await db
+        .select({ documentKind: invoices.documentKind, status: invoices.status })
+        .from(invoices)
+        .where(and(eq(invoices.businessId, business.id), eq(invoices.id, invoiceId)))
+        .limit(1);
+      if (!row || row.documentKind !== "invoice" || row.status === "draft" || row.status === "cancelled") return;
+      await sendInvoiceEmail(business.id, invoiceId);
+    } catch (error) {
+      console.error("[invoices] automatic email failed:", error instanceof Error ? error.message : error);
+    }
+  });
 }
 
 /** Kind of a document the signed-in business owns, or null. */
@@ -71,6 +95,7 @@ export async function createInvoiceAction(input: InvoiceFormInput, options: Crea
 
   revalidateDocuments(kind, id);
   if (sourceDocumentId) revalidatePath(documentPath("invoice", sourceDocumentId));
+  if (kind === "invoice" && parsed.data.status === "pending") autoEmailInvoice(business, id);
   redirect(documentPath(kind, id));
 }
 
@@ -98,7 +123,9 @@ export async function issueInvoiceAction(id: string): Promise<ActionResult> {
   } catch (error) {
     return failure(error);
   }
-  revalidateDocuments(await kindOf(business.id, id) ?? undefined, id);
+  const kind = (await kindOf(business.id, id)) ?? undefined;
+  revalidateDocuments(kind, id);
+  if (kind === "invoice") autoEmailInvoice(business, id);
   return { ok: true, data: undefined };
 }
 
@@ -149,6 +176,7 @@ export async function convertQuoteAction(id: string): Promise<ActionResult> {
   }
   revalidateDocuments("quote", id);
   revalidateDocuments("invoice", invoiceId);
+  autoEmailInvoice(business, invoiceId);
   redirect(documentPath("invoice", invoiceId));
 }
 

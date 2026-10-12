@@ -7,6 +7,7 @@ import { BusinessSettingsForm } from "@/components/settings/business-settings-fo
 import { PageHeader } from "@/components/shared/page-header";
 import { requireUser } from "@/lib/auth/current-user";
 import { isEmailConfigured } from "@/lib/email/provider";
+import { isRazorpayConfigured } from "@/lib/payments/razorpay";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -36,7 +37,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/dashboa
           </AlertDescription>
         </Alert>
       ) : null}
-      <BusinessSettingsForm business={business} />
+      <BusinessSettingsForm business={business} razorpayConfigured={isRazorpayConfigured()} />
 
       <section aria-labelledby="account-heading" className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">

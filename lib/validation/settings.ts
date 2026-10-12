@@ -50,6 +50,10 @@ export const businessSettingsSchema = z
     /** Signature image for the authorised-signatory block; same constraints as the logo. */
     signatureDataUrl: imageDataUrl("Signature"),
     signatoryName: optionalText(120),
+    /** Show Razorpay "Pay now" on public invoice pages (when the gateway is configured). */
+    onlinePaymentsEnabled: z.boolean().default(true),
+    /** Email invoices to the client automatically when they are issued. */
+    autoEmailInvoices: z.boolean().default(true),
     /** Automatic payment reminder schedule. */
     remindersEnabled: z.boolean().default(true),
     reminderDaysBefore: z.coerce.number().int().min(0, "Use 0 to disable").max(60, "At most 60 days"),

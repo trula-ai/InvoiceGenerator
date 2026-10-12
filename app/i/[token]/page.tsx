@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { PayNowButton } from "@/components/public/pay-now-button";
 import { QuoteResponseButtons } from "@/components/public/quote-response-buttons";
+import { isRazorpayConfigured } from "@/lib/payments/razorpay";
 import { amountInWords } from "@/lib/amount-in-words";
 import { BASE_CURRENCY } from "@/lib/currency";
 import { getInvoiceDetailByToken } from "@/lib/data/invoices";
@@ -36,6 +38,12 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
   const title = kind === "invoice" ? (invoice.invoiceType === "b2b" && showGst ? "Tax invoice" : "Invoice") : documentLabel(kind);
   const isInvoice = kind === "invoice";
   const quoteOpen = kind === "quote" && QUOTE_OPEN_STATUSES.includes(invoice.status);
+  const canPayOnline =
+    isInvoice &&
+    business.onlinePaymentsEnabled &&
+    isRazorpayConfigured() &&
+    ["pending", "partially_paid", "overdue"].includes(invoice.status) &&
+    Number(invoice.balanceDue) > 0;
   const businessAddress = compact([business.addressLine1, business.addressLine2, [business.city, business.state, business.postalCode].filter(Boolean).join(", "), business.country]);
   const clientAddress = compact([client.addressLine1, client.addressLine2, [client.city, client.state, client.postalCode].filter(Boolean).join(", "), client.country]);
   const settled = invoice.status === "paid";
@@ -251,6 +259,16 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
                     </li>
                   ))}
                 </ul>
+              </div>
+            ) : null}
+
+            {canPayOnline ? (
+              <div className="flex flex-col gap-3 rounded-lg bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-medium">Pay online</p>
+                  <p className="text-muted-foreground">UPI, QR code, cards, net banking and wallets, processed securely by Razorpay.</p>
+                </div>
+                <PayNowButton token={token} amountLabel={formatCurrency(invoice.balanceDue, cur)} />
               </div>
             ) : null}
 

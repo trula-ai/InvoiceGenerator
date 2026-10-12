@@ -99,7 +99,57 @@ export async function getPaymentDetail(businessId: string, id: string): Promise<
  * invoice row, validates the amount against the live balance, allocates the
  * receipt number and updates the invoice totals/status.
  */
-export async function recordPayment(businessId: string, values: PaymentFormValues): Promise<string> {
+export interface GatewayPaymentInput {
+  invoiceId: string;
+  amount: string;
+  paymentDate: string;
+  method: PaymentMethod;
+  provider: string;
+  providerPaymentId: string;
+  providerOrderId: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Records a payment collected by a gateway. Idempotent on
+ * (provider, providerPaymentId): a checkout callback and a webhook for the
+ * same payment produce one row. Returns the payment id either way.
+ */
+export async function recordGatewayPayment(businessId: string, input: GatewayPaymentInput): Promise<{ paymentId: string; created: boolean }> {
+  const [existing] = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(and(eq(payments.provider, input.provider), eq(payments.providerPaymentId, input.providerPaymentId)))
+    .limit(1);
+  if (existing) return { paymentId: existing.id, created: false };
+
+  const values: PaymentFormValues = {
+    invoiceId: input.invoiceId,
+    amount: input.amount,
+    paymentDate: input.paymentDate,
+    method: input.method,
+    reference: input.providerPaymentId,
+    notes: input.notes ?? undefined,
+  };
+  const paymentId = await recordPayment(businessId, values, {
+    provider: input.provider,
+    providerPaymentId: input.providerPaymentId,
+    providerOrderId: input.providerOrderId,
+  });
+  return { paymentId, created: true };
+}
+
+interface PaymentProvenance {
+  provider: string;
+  providerPaymentId: string | null;
+  providerOrderId: string | null;
+}
+
+export async function recordPayment(
+  businessId: string,
+  values: PaymentFormValues,
+  provenance: PaymentProvenance = { provider: "manual", providerPaymentId: null, providerOrderId: null },
+): Promise<string> {
   return db.transaction(async (tx) => {
     const [invoice] = await tx
       .select()
@@ -129,6 +179,9 @@ export async function recordPayment(businessId: string, values: PaymentFormValue
         method: values.method,
         reference: values.reference ?? null,
         notes: values.notes ?? null,
+        provider: provenance.provider,
+        providerPaymentId: provenance.providerPaymentId,
+        providerOrderId: provenance.providerOrderId,
       })
       .returning({ id: payments.id });
 

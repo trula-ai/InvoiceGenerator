@@ -43,7 +43,7 @@ const SECTION_FIELDS: Record<SectionId, (keyof BusinessSettingsInput)[]> = {
     "invoiceNotes",
     "invoiceTerms",
   ],
-  reminders: ["remindersEnabled", "reminderDaysBefore", "reminderOverdueEveryDays"],
+  reminders: ["onlinePaymentsEnabled", "autoEmailInvoices", "remindersEnabled", "reminderDaysBefore", "reminderOverdueEveryDays"],
 };
 
 function sectionWithErrors(errors: FieldErrors<BusinessSettingsInput>): SectionId | null {
@@ -53,7 +53,7 @@ function sectionWithErrors(errors: FieldErrors<BusinessSettingsInput>): SectionI
   return null;
 }
 
-export function BusinessSettingsForm({ business }: { business: Business }) {
+export function BusinessSettingsForm({ business, razorpayConfigured = false }: { business: Business; razorpayConfigured?: boolean }) {
   const [openSection, setOpenSection] = useState<SectionId | null>("profile");
   const sectionsRef = useRef<HTMLDivElement>(null);
 
@@ -103,6 +103,8 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
       roundTotals: business.roundTotals,
       signatoryName: business.signatoryName ?? "",
       signatureDataUrl: business.signatureDataUrl ?? "",
+      onlinePaymentsEnabled: business.onlinePaymentsEnabled,
+      autoEmailInvoices: business.autoEmailInvoices,
       remindersEnabled: business.remindersEnabled,
       reminderDaysBefore: business.reminderDaysBefore,
       reminderOverdueEveryDays: business.reminderOverdueEveryDays,
@@ -396,14 +398,35 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
         <Section
           id="reminders"
           icon={BellRing}
-          title="Payment reminders"
-          description="Reminder emails are sent automatically to clients with unpaid invoices. Manual sends from the invoice and client pages are always available."
+          title="Sending, payments & reminders"
+          description="What happens automatically after an invoice is issued: emailing it, letting the client pay online, and chasing unpaid invoices."
           summary={reminderSummary}
           open={openSection === "reminders"}
           hasError={sectionWithErrors(errors) === "reminders"}
           onToggle={toggle}
         >
           <FieldGroup>
+            <Field orientation="horizontal">
+              <Controller
+                control={form.control}
+                name="autoEmailInvoices"
+                render={({ field }) => <Switch id="autoEmailInvoices" checked={field.value ?? true} onCheckedChange={(checked) => field.onChange(checked)} />}
+              />
+              <FieldLabel htmlFor="autoEmailInvoices">Email invoices to clients automatically when issued</FieldLabel>
+            </Field>
+            <Field orientation="horizontal">
+              <Controller
+                control={form.control}
+                name="onlinePaymentsEnabled"
+                render={({ field }) => <Switch id="onlinePaymentsEnabled" checked={field.value ?? true} onCheckedChange={(checked) => field.onChange(checked)} />}
+              />
+              <FieldLabel htmlFor="onlinePaymentsEnabled">Accept online payments through Razorpay</FieldLabel>
+            </Field>
+            <FieldDescription className="-mt-3">
+              {razorpayConfigured
+                ? "Razorpay is connected. Public invoice pages show a Pay now button offering UPI, QR, cards, net banking and wallets; payments are recorded here automatically."
+                : "Razorpay is not connected yet. Set RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET in the environment to enable Pay now on invoice pages."}
+            </FieldDescription>
             <Field orientation="horizontal">
               <Controller
                 control={form.control}
