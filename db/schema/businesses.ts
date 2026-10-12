@@ -67,10 +67,16 @@ export const businesses = pgTable("businesses", {
   // --- Automatic payment reminders ----------------------------------------
   /** Master switch for scheduled reminder emails (lib/email/due-reminders.ts). */
   remindersEnabled: boolean().notNull().default(true),
-  /** Send a "due soon" reminder this many days before the due date (0 disables). */
-  reminderDaysBefore: integer().notNull().default(3),
+  /**
+   * Days before the due date on which a reminder is emailed, comma-separated
+   * and largest first, e.g. "7,3,1". Empty disables pre-due reminders.
+   * Parsed by lib/reminder-schedule.ts.
+   */
+  reminderSchedule: varchar({ length: 80 }).notNull().default("7,3,1"),
   /** Repeat an overdue reminder every N days after the due date (0 disables). */
   reminderOverdueEveryDays: integer().notNull().default(7),
+  /** Email the business's users a summary whenever reminders go out ("notify mail"). */
+  notifyOwner: boolean().notNull().default(true),
 
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

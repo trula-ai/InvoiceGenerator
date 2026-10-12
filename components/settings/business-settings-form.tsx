@@ -20,6 +20,7 @@ import { ImageField } from "@/components/settings/image-field";
 import type { Business } from "@/db/schema";
 import { updateSettingsAction } from "@/lib/actions/settings";
 import { currentFinancialYear } from "@/lib/fiscal-year";
+import { describeReminderSchedule } from "@/lib/reminder-schedule";
 import { businessSettingsSchema, type BusinessSettingsInput, type BusinessSettingsValues } from "@/lib/validation/settings";
 
 type SectionId = "profile" | "address" | "tax" | "invoice" | "reminders";
@@ -43,7 +44,7 @@ const SECTION_FIELDS: Record<SectionId, (keyof BusinessSettingsInput)[]> = {
     "invoiceNotes",
     "invoiceTerms",
   ],
-  reminders: ["onlinePaymentsEnabled", "autoEmailInvoices", "remindersEnabled", "reminderDaysBefore", "reminderOverdueEveryDays"],
+  reminders: ["onlinePaymentsEnabled", "autoEmailInvoices", "remindersEnabled", "reminderSchedule", "reminderOverdueEveryDays", "notifyOwner"],
 };
 
 function sectionWithErrors(errors: FieldErrors<BusinessSettingsInput>): SectionId | null {
@@ -106,8 +107,9 @@ export function BusinessSettingsForm({ business, razorpayConfigured = false }: {
       onlinePaymentsEnabled: business.onlinePaymentsEnabled,
       autoEmailInvoices: business.autoEmailInvoices,
       remindersEnabled: business.remindersEnabled,
-      reminderDaysBefore: business.reminderDaysBefore,
+      reminderSchedule: business.reminderSchedule,
       reminderOverdueEveryDays: business.reminderOverdueEveryDays,
+      notifyOwner: business.notifyOwner,
     },
   });
   const { errors, isSubmitting } = form.formState;
@@ -118,12 +120,12 @@ export function BusinessSettingsForm({ business, razorpayConfigured = false }: {
   const city = useWatch({ control: form.control, name: "city" });
   const defaultCurrency = useWatch({ control: form.control, name: "defaultCurrency" });
   const remindersEnabled = useWatch({ control: form.control, name: "remindersEnabled" });
-  const reminderDaysBefore = useWatch({ control: form.control, name: "reminderDaysBefore" });
+  const reminderSchedule = useWatch({ control: form.control, name: "reminderSchedule" });
   const reminderOverdueEveryDays = useWatch({ control: form.control, name: "reminderOverdueEveryDays" });
   const isIndia = (country ?? "").trim().toLowerCase() === "india";
   const reminderSummary = remindersEnabled
     ? [
-        Number(reminderDaysBefore) > 0 ? `${reminderDaysBefore} days before` : null,
+        describeReminderSchedule(reminderSchedule ?? ""),
         "on the due date",
         Number(reminderOverdueEveryDays) > 0 ? `every ${reminderOverdueEveryDays} days overdue` : null,
       ]
@@ -437,19 +439,29 @@ export function BusinessSettingsForm({ business, razorpayConfigured = false }: {
             </Field>
             {remindersEnabled ? (
               <div className="grid gap-5 sm:grid-cols-2">
-                <Field data-invalid={!!errors.reminderDaysBefore}>
-                  <FieldLabel htmlFor="reminderDaysBefore">Remind before due date (days)</FieldLabel>
-                  <Input id="reminderDaysBefore" type="number" min={0} max={60} {...form.register("reminderDaysBefore")} />
-                  <FieldDescription>One due-soon email this many days ahead. 0 turns it off.</FieldDescription>
-                  <FieldError errors={[errors.reminderDaysBefore]} />
+                <Field data-invalid={!!errors.reminderSchedule}>
+                  <FieldLabel htmlFor="reminderSchedule">Remind before due date (days)</FieldLabel>
+                  <Input id="reminderSchedule" placeholder="7, 3, 1" {...form.register("reminderSchedule")} />
+                  <FieldDescription>One email on each of these days before the due date. Leave empty to send none before the due date.</FieldDescription>
+                  <FieldError errors={[errors.reminderSchedule]} />
                 </Field>
                 <Field data-invalid={!!errors.reminderOverdueEveryDays}>
                   <FieldLabel htmlFor="reminderOverdueEveryDays">Repeat when overdue (every N days)</FieldLabel>
                   <Input id="reminderOverdueEveryDays" type="number" min={0} max={90} {...form.register("reminderOverdueEveryDays")} />
-                  <FieldDescription>An overdue nudge every N days after the due date. 0 turns it off.</FieldDescription>
+                  <FieldDescription>A pending-payment nudge every N days after the due date. 0 turns it off.</FieldDescription>
                   <FieldError errors={[errors.reminderOverdueEveryDays]} />
                 </Field>
               </div>
+            ) : null}
+            {remindersEnabled ? (
+              <Field orientation="horizontal">
+                <Controller
+                  control={form.control}
+                  name="notifyOwner"
+                  render={({ field }) => <Switch id="notifyOwner" checked={field.value ?? true} onCheckedChange={(checked) => field.onChange(checked)} />}
+                />
+                <FieldLabel htmlFor="notifyOwner">Notify me by email when reminders are sent, with a list of what is still pending</FieldLabel>
+              </Field>
             ) : null}
             <FieldDescription>
               A reminder is always sent on the due date itself. Clients can be excluded individually from their client settings. The schedule runs

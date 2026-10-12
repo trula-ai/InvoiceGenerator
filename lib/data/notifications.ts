@@ -269,7 +269,7 @@ export async function notifyInvoiceEvent(
  * Idempotent: each notice carries a dedupe key for the invoice and day (or
  * week, for repeated overdue nags), so running it on every page load is safe.
  */
-export async function syncPaymentNotifications(businessId: string, today = todayIso()): Promise<number> {
+export async function syncPaymentNotifications(businessId: string, today = todayIso(), dueSoonDays = DUE_SOON_DAYS): Promise<number> {
   const rows = await db
     .select({
       id: invoices.id,
@@ -285,7 +285,7 @@ export async function syncPaymentNotifications(businessId: string, today = today
       and(eq(invoices.businessId, businessId), eq(invoices.documentKind, "invoice"), inArray(invoices.status, PAYABLE), sql`${invoices.balanceDue} > 0`),
     );
 
-  const soonLimit = addDaysIso(today, DUE_SOON_DAYS);
+  const soonLimit = addDaysIso(today, Math.max(0, dueSoonDays));
   const values: (typeof notifications.$inferInsert)[] = [];
 
   for (const inv of rows) {

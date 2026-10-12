@@ -39,8 +39,9 @@ export async function updateBusinessSettings(businessId: string, values: Busines
       onlinePaymentsEnabled: values.onlinePaymentsEnabled,
       autoEmailInvoices: values.autoEmailInvoices,
       remindersEnabled: values.remindersEnabled,
-      reminderDaysBefore: values.reminderDaysBefore,
+      reminderSchedule: values.reminderSchedule,
       reminderOverdueEveryDays: values.reminderOverdueEveryDays,
+      notifyOwner: values.notifyOwner,
       updatedAt: new Date(),
     })
     .where(eq(businesses.id, businessId))

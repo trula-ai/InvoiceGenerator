@@ -1,0 +1,1 @@
+ALTER TABLE "businesses" DROP COLUMN "reminder_days_before";

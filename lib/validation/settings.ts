@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { formatReminderSchedule, isValidReminderSchedule, parseReminderSchedule } from "@/lib/reminder-schedule";
+
 import { currencyCode, optionalEmail, optionalGstin, optionalStateCode, optionalText } from "./common";
 
 const numberPrefix = z
@@ -56,8 +58,16 @@ export const businessSettingsSchema = z
     autoEmailInvoices: z.boolean().default(true),
     /** Automatic payment reminder schedule. */
     remindersEnabled: z.boolean().default(true),
-    reminderDaysBefore: z.coerce.number().int().min(0, "Use 0 to disable").max(60, "At most 60 days"),
+    /** Days before the due date, comma-separated, e.g. "7,3,1". Normalised to largest-first. */
+    reminderSchedule: z
+      .string()
+      .trim()
+      .max(80)
+      .refine(isValidReminderSchedule, "Enter days separated by commas, each between 1 and 60, e.g. 7,3,1")
+      .transform((v) => formatReminderSchedule(parseReminderSchedule(v))),
     reminderOverdueEveryDays: z.coerce.number().int().min(0, "Use 0 to disable").max(90, "At most 90 days"),
+    /** Email the business's own users a summary when reminders are sent. */
+    notifyOwner: z.boolean().default(true),
   })
   .refine((v) => !v.gstEnabled || !!v.gstin, { message: "GSTIN is required when GST is enabled", path: ["gstin"] })
   .refine((v) => !v.gstEnabled || !!v.stateCode, {
