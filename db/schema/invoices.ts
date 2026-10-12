@@ -85,6 +85,8 @@ export const invoices = pgTable(
     sourceDocumentId: uuid().references((): AnyPgColumn => invoices.id, { onDelete: "set null" }),
     /** For quotes: the invoice created by "Convert to invoice". */
     convertedToId: uuid().references((): AnyPgColumn => invoices.id, { onDelete: "set null" }),
+    /** Recurring profile that generated this invoice, if any (no FK so profiles can be deleted freely). */
+    recurringProfileId: uuid(),
 
     issueDate: date().notNull(),
     dueDate: date().notNull(),

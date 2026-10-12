@@ -57,6 +57,13 @@
       "when": 1791794626681,
       "tag": "0007_drop_reminder_days_before",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791795434488,
+      "tag": "0008_phase4_recurring",
+      "breakpoints": true
     }
   ]
 }

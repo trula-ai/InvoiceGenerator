@@ -103,6 +103,8 @@ export interface CreateDocumentOptions {
   kind?: DocumentKind;
   /** Quote an invoice is converted from, or invoice a credit note is issued against. */
   sourceDocumentId?: string | null;
+  /** Recurring profile that generated this invoice. */
+  recurringProfileId?: string | null;
 }
 
 /**
@@ -404,6 +406,7 @@ export async function createInvoice(business: Business, values: InvoiceFormValue
         businessId: business.id,
         documentKind: kind,
         sourceDocumentId,
+        recurringProfileId: options.recurringProfileId ?? null,
         invoiceNumber,
         financialYear,
         publicToken: newPublicToken(),

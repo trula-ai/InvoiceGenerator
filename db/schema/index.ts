@@ -21,6 +21,7 @@ export * from "./items";
 export * from "./invoices";
 export * from "./payments";
 export * from "./payment-orders";
+export * from "./recurring-profiles";
 export * from "./email-logs";
 export * from "./exchange-rates";
 export * from "./notifications";

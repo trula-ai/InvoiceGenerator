@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowRightLeft, Ban, BellRing, Check, Copy, CopyPlus, Download, Eye, FileMinus, Link2, Mail, Pencil, Send, Trash2, X } from "lucide-react";
+import { ArrowRightLeft, Ban, BellRing, Check, Copy, CopyPlus, Download, Eye, FileMinus, Link2, Mail, Pencil, Repeat, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -150,6 +150,12 @@ export function InvoiceActions(props: InvoiceActionsProps) {
       {issued ? (
         <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/credit-notes/new?invoice=${invoiceId}`} />} title="Credit all or part of this invoice">
           <FileMinus /> Credit note
+        </Button>
+      ) : null}
+
+      {isInvoice && status !== "cancelled" ? (
+        <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/recurring/new?invoice=${invoiceId}`} />} title="Bill these lines again on a schedule">
+          <Repeat /> Make recurring
         </Button>
       ) : null}
 
