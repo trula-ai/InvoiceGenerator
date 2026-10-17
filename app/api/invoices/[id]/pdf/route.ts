@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { can, getCurrentUser } from "@/lib/auth/current-user";
 import { getInvoiceDetail } from "@/lib/data/invoices";
 import { pdfFileName, renderInvoicePdf } from "@/lib/pdf/render";
 
@@ -8,6 +8,7 @@ import { pdfFileName, renderInvoicePdf } from "@/lib/pdf/render";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const current = await getCurrentUser();
   if (!current) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!can(current, "invoices.view")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
   const detail = await getInvoiceDetail(current.business.id, id);

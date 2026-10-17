@@ -9,7 +9,7 @@ import { getUnreadNotificationCount } from "@/lib/data/notifications";
 import { maybeRunDailyChecks } from "@/lib/email/due-reminders";
 
 export default async function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
-  const { user, business } = await requireUser();
+  const { user, business, permissions } = await requireUser();
   const [pendingCount, unreadCount] = await Promise.all([getPendingInvoiceCount(business.id), getUnreadNotificationCount(business.id)]);
 
   // Due-date scan and reminder emails, once an hour per business, after the
@@ -21,9 +21,10 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
       <DashboardSidebar
         workspaceName={business.name}
         badges={{ "/dashboard/invoices": pendingCount, "/dashboard/notifications": unreadCount }}
+        permissions={permissions}
       />
       <SidebarInset>
-        <DashboardHeader workspaceName={business.name} user={{ name: user.name, email: user.email }} unreadNotifications={unreadCount} />
+        <DashboardHeader workspaceName={business.name} user={{ name: user.name, email: user.email, roles: user.roles }} unreadNotifications={unreadCount} />
         <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>

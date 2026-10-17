@@ -5,7 +5,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { invoices } from "@/db/schema";
-import { requireUser } from "@/lib/auth/current-user";
+import { authorize } from "@/lib/auth/current-user";
 import { saveInstallmentPlan } from "@/lib/data/installments";
 import { db } from "@/lib/db";
 import { buildInstallmentSchedule } from "@/lib/installments";
@@ -27,7 +27,9 @@ export interface BulkInstallmentResult {
  * its own total; failures on one invoice do not roll back the others.
  */
 export async function createInstallmentPlansAction(invoiceIds: string[], input: InstallmentGeneratorInput): Promise<ActionResult<BulkInstallmentResult>> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.edit");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const ids = idsSchema.safeParse(invoiceIds);
   if (!ids.success) return validationFailure(ids.error);
   const parsed = installmentGeneratorSchema.safeParse(input);

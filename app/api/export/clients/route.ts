@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { can, getCurrentUser } from "@/lib/auth/current-user";
 import { csvResponse, toCsv } from "@/lib/csv";
 import { listClients } from "@/lib/data/clients";
 import { todayIso } from "@/lib/fiscal-year";
@@ -35,6 +35,7 @@ function str(v: string | null): string | undefined {
 export async function GET(request: Request) {
   const current = await getCurrentUser();
   if (!current) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!can(current, "clients.view")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const params = new URL(request.url).searchParams;
   const q = str(params.get("q"));

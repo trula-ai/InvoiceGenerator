@@ -3,13 +3,13 @@ import { notFound } from "next/navigation";
 
 import { ClientForm } from "@/components/clients/client-form";
 import { PageHeader } from "@/components/shared/page-header";
-import { requireUser } from "@/lib/auth/current-user";
+import { requirePermission } from "@/lib/auth/current-user";
 import { getClient } from "@/lib/data/clients";
 
 export const metadata: Metadata = { title: "Edit client" };
 
 export default async function EditClientPage({ params }: PageProps<"/dashboard/clients/[id]/edit">) {
-  const { business } = await requireUser();
+  const { business } = await requirePermission("clients.manage");
   const { id } = await params;
   const client = await getClient(business.id, id);
   if (!client) notFound();

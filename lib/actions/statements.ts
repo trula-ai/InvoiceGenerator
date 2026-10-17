@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireUser } from "@/lib/auth/current-user";
+import { authorize } from "@/lib/auth/current-user";
 import { sendClientStatementEmail, type SendStatementResult } from "@/lib/email/send-statement";
 import type { ActionResult } from "@/lib/validation/common";
 
@@ -16,7 +16,9 @@ const schema = z.object({
 
 /** Emails a client a statement of every outstanding invoice, PDFs attached. */
 export async function sendClientStatementAction(clientId: string, input: { to?: string; message?: string }): Promise<ActionResult<SendStatementResult>> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.send");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   if (!z.uuid().safeParse(clientId).success) return { ok: false, error: "Invalid client." };
   const parsed = schema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);

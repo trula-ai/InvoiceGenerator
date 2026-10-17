@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import type { InvoiceStatus } from "@/db/schema";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { can, getCurrentUser } from "@/lib/auth/current-user";
 import { csvResponse, toCsv, type CsvValue } from "@/lib/csv";
 import { listInvoices, type InvoiceListItem } from "@/lib/data/invoices";
 import { todayIso } from "@/lib/fiscal-year";
@@ -48,6 +48,7 @@ function toRow(i: InvoiceListItem): CsvValue[] {
 export async function GET(request: Request) {
   const current = await getCurrentUser();
   if (!current) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!can(current, "invoices.view")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const params = new URL(request.url).searchParams;
   const q = str(params.get("q"));

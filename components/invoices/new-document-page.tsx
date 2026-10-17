@@ -5,7 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { InvoiceForm, type SourceDocument } from "@/components/invoices/invoice-form";
 import { PageHeader } from "@/components/shared/page-header";
 import type { DocumentKind } from "@/db/schema";
-import { requireUser } from "@/lib/auth/current-user";
+import { requirePermission } from "@/lib/auth/current-user";
 import { listClientOptions } from "@/lib/data/clients";
 import { getRateToInr, type RateQuote } from "@/lib/data/exchange-rates";
 import { getInvoiceDetail } from "@/lib/data/invoices";
@@ -27,7 +27,7 @@ function str(v: string | string[] | undefined): string | undefined {
  * `?from=`), credit notes are seeded from the invoice in `?invoice=`.
  */
 export async function NewDocumentPage({ kind, searchParams }: { kind: DocumentKind; searchParams: Promise<SearchParams> }) {
-  const { business } = await requireUser();
+  const { business } = await requirePermission("invoices.create");
   const params = await searchParams;
   const label = documentLabel(kind);
 

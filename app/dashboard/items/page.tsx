@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ItemsTable } from "@/components/items/items-table";
 import { PageHeader } from "@/components/shared/page-header";
-import { requireUser } from "@/lib/auth/current-user";
+import { can, requirePermission } from "@/lib/auth/current-user";
 import { listItems } from "@/lib/data/items";
 
 export const metadata: Metadata = { title: "Items" };
@@ -16,7 +16,8 @@ function str(v: string | string[] | undefined): string | undefined {
 }
 
 export default async function ItemsPage({ searchParams }: PageProps<"/dashboard/items">) {
-  const { business } = await requireUser();
+  const current = await requirePermission("items.view");
+  const { business } = current;
   const params = await searchParams;
   const q = str(params.q);
   const archived = str(params.archived) === "1";
@@ -26,9 +27,11 @@ export default async function ItemsPage({ searchParams }: PageProps<"/dashboard/
   return (
     <>
       <PageHeader title="Items" description="Products and services you sell, ready to drop onto an invoice.">
-        <Button nativeButton={false} render={<Link href="/dashboard/items/new" />}>
-          <Plus /> Add item
-        </Button>
+        {can(current, "items.manage") ? (
+          <Button nativeButton={false} render={<Link href="/dashboard/items/new" />}>
+            <Plus /> Add item
+          </Button>
+        ) : null}
       </PageHeader>
 
       <form method="get" className="flex flex-wrap items-center gap-2">

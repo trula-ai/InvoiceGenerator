@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireUser } from "@/lib/auth/current-user";
+import { authorize, requireUser } from "@/lib/auth/current-user";
 import {
   getUnreadNotificationCount,
   listNotifications,
@@ -55,7 +55,9 @@ export async function markAllNotificationsReadAction(): Promise<ActionResult> {
 
 /** Manually runs the due-date scan and reminder emails for the current business. */
 export async function runDueChecksAction(): Promise<ActionResult<DueReminderSummary>> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.send");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   try {
     const summary = await runDailyChecks(business.id);
     revalidateNotifications();

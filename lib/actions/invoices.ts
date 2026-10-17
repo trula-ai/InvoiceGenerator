@@ -7,7 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { invoices, type Business, type DocumentKind } from "@/db/schema";
-import { requireUser } from "@/lib/auth/current-user";
+import { authorize } from "@/lib/auth/current-user";
 import { getRateToInr, type RateQuote } from "@/lib/data/exchange-rates";
 import {
   cancelInvoice,
@@ -80,7 +80,9 @@ export interface CreateDocumentActionOptions {
 }
 
 export async function createInvoiceAction(input: InvoiceFormInput, options: CreateDocumentActionOptions = {}): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.create");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const parsed = invoiceSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
   const kind: DocumentKind = isDocumentKind(options.kind) ? options.kind : "invoice";
@@ -100,7 +102,9 @@ export async function createInvoiceAction(input: InvoiceFormInput, options: Crea
 }
 
 export async function updateInvoiceAction(id: string, input: InvoiceFormInput): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.edit");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const parsed = invoiceSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
 
@@ -117,7 +121,9 @@ export async function updateInvoiceAction(id: string, input: InvoiceFormInput): 
 }
 
 export async function issueInvoiceAction(id: string): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.edit");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   try {
     await issueInvoice(business.id, id);
   } catch (error) {
@@ -130,7 +136,9 @@ export async function issueInvoiceAction(id: string): Promise<ActionResult> {
 }
 
 export async function cancelInvoiceAction(id: string): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.edit");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   try {
     await cancelInvoice(business.id, id);
   } catch (error) {
@@ -141,7 +149,9 @@ export async function cancelInvoiceAction(id: string): Promise<ActionResult> {
 }
 
 export async function deleteDraftInvoiceAction(id: string): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.edit");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const kind = (await kindOf(business.id, id)) ?? "invoice";
   try {
     await deleteDraftInvoice(business.id, id);
@@ -154,7 +164,9 @@ export async function deleteDraftInvoiceAction(id: string): Promise<ActionResult
 
 /** Owner marks a quote accepted or declined on the client's behalf. */
 export async function respondToQuoteAction(id: string, decision: QuoteDecision): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.edit");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   if (decision !== "accepted" && decision !== "declined") return { ok: false, error: "Invalid decision." };
   try {
     await respondToQuote(business.id, id, decision);
@@ -167,7 +179,9 @@ export async function respondToQuoteAction(id: string, decision: QuoteDecision):
 
 /** Creates an invoice from a quote and opens it. */
 export async function convertQuoteAction(id: string): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.edit");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   let invoiceId: string;
   try {
     invoiceId = await convertQuoteToInvoice(business, id);
@@ -189,7 +203,9 @@ export async function sendInvoiceEmailAction(
   id: string,
   input: { to?: string; message?: string },
 ): Promise<ActionResult<SendInvoiceResult>> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.send");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const parsed = sendSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
 
@@ -209,7 +225,9 @@ export async function sendReminderEmailAction(
   id: string,
   input: { to?: string; message?: string },
 ): Promise<ActionResult<SendInvoiceResult>> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.send");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const parsed = sendSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
 
@@ -227,7 +245,8 @@ export async function sendReminderEmailAction(
 
 /** Live rate lookup for the invoice form. */
 export async function fetchExchangeRateAction(currency: string): Promise<ActionResult<RateQuote>> {
-  await requireUser();
+  const auth = await authorize("invoices.create");
+  if (!auth.ok) return auth;
   const parsed = currencyCode.safeParse(currency);
   if (!parsed.success) return { ok: false, error: "Unsupported currency." };
   try {

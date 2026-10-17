@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { InvoiceForm, type SourceDocument } from "@/components/invoices/invoice-form";
 import { PageHeader } from "@/components/shared/page-header";
 import type { DocumentKind } from "@/db/schema";
-import { requireUser } from "@/lib/auth/current-user";
+import { requirePermission } from "@/lib/auth/current-user";
 import { listClientOptions } from "@/lib/data/clients";
 import { getInvoiceDetail, isInvoiceEditable } from "@/lib/data/invoices";
 import { listItemOptions } from "@/lib/data/items";
@@ -12,7 +12,7 @@ import { D, toMoney } from "@/lib/money";
 
 /** Shared edit page for invoices, quotes and credit notes. */
 export async function EditDocumentPage({ kind, id }: { kind: DocumentKind; id: string }) {
-  const { business } = await requireUser();
+  const { business } = await requirePermission("invoices.edit");
   const [detail, clients, catalog] = await Promise.all([getInvoiceDetail(business.id, id), listClientOptions(business.id), listItemOptions(business.id)]);
   if (!detail) notFound();
   if (detail.invoice.documentKind !== kind) redirect(`${documentPath(detail.invoice.documentKind, id)}/edit`);

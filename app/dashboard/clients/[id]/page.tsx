@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { EmailDialog } from "@/components/invoices/invoice-actions";
 import { PageHeader } from "@/components/shared/page-header";
-import { requireUser } from "@/lib/auth/current-user";
+import { can, requireUser } from "@/lib/auth/current-user";
 import { getClient, getClientInvoiceHistory } from "@/lib/data/clients";
 import { PAYABLE_STATUSES } from "@/lib/data/invoices";
 import { BASE_CURRENCY } from "@/lib/currency";
@@ -25,7 +25,8 @@ import { D, toMoney } from "@/lib/money";
 export const metadata: Metadata = { title: "Client" };
 
 export default async function ClientDetailPage({ params }: PageProps<"/dashboard/clients/[id]">) {
-  const { business } = await requireUser();
+  const current = await requireUser();
+  const { business } = current;
   const { id } = await params;
   const [client, history] = await Promise.all([getClient(business.id, id), getClientInvoiceHistory(business.id, id)]);
   if (!client) notFound();
@@ -44,7 +45,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
   return (
     <>
       <PageHeader title={client.name} description={client.contactName ? `Contact: ${client.contactName}` : undefined}>
-        <ArchiveClientButton clientId={client.id} archived={!!client.archivedAt} />
+        {can(current, "clients.manage") ? <ArchiveClientButton clientId={client.id} archived={!!client.archivedAt} /> : null}
         <SendStatementDialog
           clientId={client.id}
           clientName={client.name}
@@ -57,9 +58,11 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
           }
           emailConfigured={emailConfigured}
         />
-        <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/clients/${client.id}/edit`} />}>
-          <Pencil /> Edit
-        </Button>
+        {can(current, "clients.manage") ? (
+          <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/clients/${client.id}/edit`} />}>
+            <Pencil /> Edit
+          </Button>
+        ) : null}
         <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/quotes/new?client=${client.id}`} />}>
           <Plus /> New quote
         </Button>

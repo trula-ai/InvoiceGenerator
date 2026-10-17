@@ -4,13 +4,13 @@ import { notFound } from "next/navigation";
 import { ArchiveItemButton } from "@/components/items/archive-item-button";
 import { ItemForm } from "@/components/items/item-form";
 import { PageHeader } from "@/components/shared/page-header";
-import { requireUser } from "@/lib/auth/current-user";
+import { requirePermission } from "@/lib/auth/current-user";
 import { getItem } from "@/lib/data/items";
 
 export const metadata: Metadata = { title: "Edit item" };
 
 export default async function EditItemPage({ params }: PageProps<"/dashboard/items/[id]/edit">) {
-  const { business } = await requireUser();
+  const { business } = await requirePermission("items.manage");
   const { id } = await params;
   const item = await getItem(business.id, id);
   if (!item) notFound();

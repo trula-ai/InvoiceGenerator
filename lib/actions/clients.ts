@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireUser } from "@/lib/auth/current-user";
+import { authorize } from "@/lib/auth/current-user";
 import { createClient, setClientArchived, updateClient } from "@/lib/data/clients";
 import { stateNameForCode } from "@/lib/india-states";
 import { clientSchema, type ClientInput } from "@/lib/validation/client";
@@ -19,7 +19,9 @@ function withStateName<T extends { state?: string; stateCode?: string; country: 
 }
 
 export async function createClientAction(input: ClientInput): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("clients.manage");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const parsed = clientSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
 
@@ -36,7 +38,9 @@ export async function createClientAction(input: ClientInput): Promise<ActionResu
 }
 
 export async function updateClientAction(id: string, input: ClientInput): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("clients.manage");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const parsed = clientSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
 
@@ -53,7 +57,9 @@ export async function updateClientAction(id: string, input: ClientInput): Promis
 }
 
 export async function setClientArchivedAction(id: string, archived: boolean): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("clients.manage");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   try {
     await setClientArchived(business.id, id, archived);
   } catch (error) {

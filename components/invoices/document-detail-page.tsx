@@ -13,7 +13,7 @@ import { InvoiceActions } from "@/components/invoices/invoice-actions";
 import { DeletePaymentButton } from "@/components/payments/delete-payment-button";
 import { EmailReceiptButton } from "@/components/payments/email-receipt-button";
 import type { DocumentKind } from "@/db/schema";
-import { requireUser } from "@/lib/auth/current-user";
+import { can, requireUser } from "@/lib/auth/current-user";
 import { amountInWords } from "@/lib/amount-in-words";
 import { BASE_CURRENCY } from "@/lib/currency";
 import { getInvoiceDetail, isInvoiceEditable, type RelatedDocument } from "@/lib/data/invoices";
@@ -26,7 +26,8 @@ import { PAYMENT_METHOD_LABELS } from "@/lib/validation/payment";
 
 /** Shared detail page for invoices, quotes and credit notes. */
 export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id: string }) {
-  const { business } = await requireUser();
+  const current = await requireUser();
+  const { business } = current;
   const detail = await getInvoiceDetail(business.id, id);
   if (!detail) notFound();
   if (detail.invoice.documentKind !== kind) redirect(documentPath(detail.invoice.documentKind, id));
@@ -325,7 +326,7 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
                               <Download />
                             </Button>
                             <EmailReceiptButton compact paymentId={p.id} receiptNumber={p.receiptNumber} clientEmail={client.email} emailConfigured={isEmailConfigured()} />
-                            <DeletePaymentButton paymentId={p.id} invoiceId={invoice.id} receiptNumber={p.receiptNumber} />
+                            {can(current, "payments.delete") ? <DeletePaymentButton paymentId={p.id} invoiceId={invoice.id} receiptNumber={p.receiptNumber} /> : null}
                           </div>
                         </TableCell>
                       </TableRow>

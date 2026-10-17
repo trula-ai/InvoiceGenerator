@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireUser } from "@/lib/auth/current-user";
+import { authorize } from "@/lib/auth/current-user";
 import { createItem, setItemArchived, updateItem } from "@/lib/data/items";
 import type { ActionResult } from "@/lib/validation/common";
 import { itemSchema, type ItemInput } from "@/lib/validation/item";
@@ -16,7 +16,9 @@ function revalidateItems() {
 }
 
 export async function createItemAction(input: ItemInput): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("items.manage");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const parsed = itemSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
 
@@ -31,7 +33,9 @@ export async function createItemAction(input: ItemInput): Promise<ActionResult> 
 }
 
 export async function updateItemAction(id: string, input: ItemInput): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("items.manage");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const parsed = itemSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
 
@@ -47,7 +51,9 @@ export async function updateItemAction(id: string, input: ItemInput): Promise<Ac
 }
 
 export async function setItemArchivedAction(id: string, archived: boolean): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("items.manage");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   try {
     await setItemArchived(business.id, id, archived);
   } catch (error) {

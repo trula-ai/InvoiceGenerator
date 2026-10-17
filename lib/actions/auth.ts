@@ -9,6 +9,7 @@ import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSession, destroySession } from "@/lib/auth/session";
 import { isTurnstileEnabled, verifyTurnstileToken } from "@/lib/auth/turnstile";
 import { consumePasswordResetToken, createPasswordResetToken } from "@/lib/data/password-reset";
+import { acceptInvitation } from "@/lib/data/team";
 import { db } from "@/lib/db";
 import { sendPasswordResetEmail } from "@/lib/email/send-password-reset";
 import {
@@ -22,6 +23,7 @@ import {
   type ResetPasswordInput,
 } from "@/lib/validation/auth";
 import type { ActionResult } from "@/lib/validation/common";
+import { acceptInvitationSchema, type AcceptInvitationInput } from "@/lib/validation/team";
 
 import { failure, validationFailure } from "./utils";
 
@@ -40,7 +42,7 @@ export async function registerAction(input: RegisterInput): Promise<ActionResult
       const [business] = await tx.insert(businesses).values({ name: values.businessName }).returning({ id: businesses.id });
       const [user] = await tx
         .insert(users)
-        .values({ businessId: business.id, name: values.name, email: values.email, passwordHash })
+        .values({ businessId: business.id, name: values.name, email: values.email, passwordHash, roles: ['admin'] })
         .returning({ id: users.id });
       return user.id;
     });
@@ -75,13 +77,14 @@ export async function loginAction(input: LoginInput, next?: string): Promise<Act
 
   try {
     const [user] = await db
-      .select({ id: users.id, passwordHash: users.passwordHash })
+      .select({ id: users.id, passwordHash: users.passwordHash, disabledAt: users.disabledAt })
       .from(users)
       .where(eq(users.email, values.email))
       .limit(1);
 
     const valid = user ? await verifyPassword(values.password, user.passwordHash) : false;
     if (!user || !valid) return { ok: false, error: "Incorrect email or password." };
+    if (user.disabledAt) return { ok: false, error: "This account has been deactivated. Contact an admin of your business." };
 
     await createSession(user.id);
   } catch (error) {
@@ -158,6 +161,29 @@ export async function resetPasswordAction(input: ResetPasswordInput): Promise<Ac
     await createSession(userId);
   } catch (error) {
     return failure(error, "Could not reset your password.");
+  }
+
+  redirect("/dashboard");
+}
+
+const INVALID_INVITATION = "This invitation link is invalid, has expired or has already been used. Ask your admin to send a new one.";
+
+/**
+ * Redeems an invitation: creates the user in the inviting business with the
+ * invited roles, signs them in and sends them to the dashboard. An unusable
+ * token comes back as a `token` field error so the form can show the
+ * "ask for a new invitation" state.
+ */
+export async function acceptInvitationAction(input: AcceptInvitationInput): Promise<ActionResult> {
+  const parsed = acceptInvitationSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+
+  try {
+    const userId = await acceptInvitation(parsed.data);
+    if (!userId) return { ok: false, error: INVALID_INVITATION, fieldErrors: { token: [INVALID_INVITATION] } };
+    await createSession(userId);
+  } catch (error) {
+    return failure(error, "Could not accept the invitation.");
   }
 
   redirect("/dashboard");

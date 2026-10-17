@@ -30,11 +30,12 @@ import { dashboardNav, isNavItemActive } from "@/components/dashboard/nav";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { AppearanceMenuSection } from "@/components/theme/appearance-menu-section";
 import { logoutAction } from "@/lib/actions/auth";
+import { describeRoles, type UserRole } from "@/lib/auth/permissions";
 import { getInitials } from "@/lib/format";
 
 interface DashboardHeaderProps {
   workspaceName: string;
-  user: { name: string; email: string };
+  user: { name: string; email: string; roles: UserRole[] };
   /** Unread notification count for the bell badge. */
   unreadNotifications?: number;
 }
@@ -78,12 +79,13 @@ export function DashboardHeader({ workspaceName, user, unreadNotifications = 0 }
               <DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
                 <span className="text-sm font-medium text-foreground">{user.name}</span>
                 <span className="text-xs text-muted-foreground">{user.email}</span>
+                <span className="mt-1 text-xs text-muted-foreground">{describeRoles(user.roles)}</span>
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem render={<Link href="/dashboard/settings" />}>
-                <Settings /> Business settings
+                <Settings /> Settings
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

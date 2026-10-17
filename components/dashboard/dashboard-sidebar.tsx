@@ -17,16 +17,20 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { dashboardNav, isNavItemActive } from "@/components/dashboard/nav";
+import { isNavItemActive, visibleNav } from "@/components/dashboard/nav";
+import type { Permission } from "@/lib/auth/permissions";
 
 interface DashboardSidebarProps {
   workspaceName: string;
   /** Optional count badges keyed by nav href. */
   badges?: Partial<Record<string, number>>;
+  /** Permissions of the signed-in user; nav items they do not cover are hidden. */
+  permissions: Permission[];
 }
 
-export function DashboardSidebar({ workspaceName, badges }: DashboardSidebarProps) {
+export function DashboardSidebar({ workspaceName, badges, permissions }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const items = visibleNav(permissions);
 
   return (
     <Sidebar collapsible="icon">
@@ -51,7 +55,7 @@ export function DashboardSidebar({ workspaceName, badges }: DashboardSidebarProp
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {dashboardNav.map((item) => {
+              {items.map((item) => {
                 const badge = badges?.[item.href];
                 return (
                   <SidebarMenuItem key={item.href}>

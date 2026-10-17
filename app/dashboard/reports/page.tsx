@@ -9,7 +9,7 @@ import { MonthlyBars } from "@/components/charts/monthly-bars";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { PageHeader } from "@/components/shared/page-header";
 import type { InvoiceStatus } from "@/db/schema";
-import { requireUser } from "@/lib/auth/current-user";
+import { requirePermission } from "@/lib/auth/current-user";
 import { BASE_CURRENCY } from "@/lib/currency";
 import {
   defaultReportRange,
@@ -27,7 +27,7 @@ export const metadata: Metadata = { title: "Reports" };
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function ReportsPage({ searchParams }: PageProps<"/dashboard/reports">) {
-  const { business } = await requireUser();
+  const { business } = await requirePermission("reports.view");
   const params = await searchParams;
   const fromParam = typeof params.from === "string" && ISO.test(params.from) ? params.from : undefined;
   const toParam = typeof params.to === "string" && ISO.test(params.to) ? params.to : undefined;

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireUser } from "@/lib/auth/current-user";
+import { authorize } from "@/lib/auth/current-user";
 import { deletePayment, recordPayment } from "@/lib/data/payments";
 import { sendReceiptEmail, type SendReceiptResult } from "@/lib/email/send-receipt";
 import type { ActionResult } from "@/lib/validation/common";
@@ -22,7 +22,9 @@ function revalidatePayment(invoiceId: string) {
 }
 
 export async function recordPaymentAction(input: PaymentFormInput): Promise<ActionResult<{ paymentId: string }>> {
-  const { business } = await requireUser();
+  const auth = await authorize("payments.record");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const parsed = paymentSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
 
@@ -36,7 +38,9 @@ export async function recordPaymentAction(input: PaymentFormInput): Promise<Acti
 }
 
 export async function deletePaymentAction(id: string, invoiceId: string): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("payments.delete");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   try {
     await deletePayment(business.id, id);
     revalidatePayment(invoiceId);
@@ -55,7 +59,9 @@ export async function sendReceiptEmailAction(
   paymentId: string,
   input: { to?: string; message?: string },
 ): Promise<ActionResult<SendReceiptResult>> {
-  const { business } = await requireUser();
+  const auth = await authorize("receipts.send");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const parsed = sendReceiptSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
 

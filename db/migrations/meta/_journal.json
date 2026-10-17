@@ -71,6 +71,13 @@
       "when": 1791821453970,
       "tag": "0009_installments",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792218273188,
+      "tag": "0010_phase_a_roles_invitations",
+      "breakpoints": true
     }
   ]
 }

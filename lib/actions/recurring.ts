@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import type { RecurringStatus } from "@/db/schema";
-import { requireUser } from "@/lib/auth/current-user";
+import { authorize } from "@/lib/auth/current-user";
 import { createRecurringProfile, deleteRecurringProfile, runProfileNow, setRecurringStatus, updateRecurringSchedule } from "@/lib/data/recurring";
 import type { ActionResult } from "@/lib/validation/common";
 import { recurringScheduleSchema, type RecurringScheduleInput } from "@/lib/validation/recurring";
@@ -21,7 +21,9 @@ function revalidateRecurring(id?: string) {
 }
 
 export async function createRecurringAction(invoiceId: string, input: RecurringScheduleInput): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.create");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   if (!z.uuid().safeParse(invoiceId).success) return { ok: false, error: "Invalid invoice." };
   const parsed = recurringScheduleSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
@@ -37,7 +39,9 @@ export async function createRecurringAction(invoiceId: string, input: RecurringS
 }
 
 export async function updateRecurringAction(id: string, input: RecurringScheduleInput): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.edit");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   const parsed = recurringScheduleSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
   try {
@@ -50,7 +54,9 @@ export async function updateRecurringAction(id: string, input: RecurringSchedule
 }
 
 export async function setRecurringStatusAction(id: string, status: RecurringStatus): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.edit");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   if (!["active", "paused", "ended"].includes(status)) return { ok: false, error: "Invalid status." };
   try {
     await setRecurringStatus(business.id, id, status);
@@ -62,7 +68,9 @@ export async function setRecurringStatusAction(id: string, status: RecurringStat
 }
 
 export async function runRecurringNowAction(id: string): Promise<ActionResult<{ invoiceId: string }>> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.edit");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   try {
     const invoiceId = await runProfileNow(business, id);
     revalidateRecurring(id);
@@ -74,7 +82,9 @@ export async function runRecurringNowAction(id: string): Promise<ActionResult<{ 
 }
 
 export async function deleteRecurringAction(id: string): Promise<ActionResult> {
-  const { business } = await requireUser();
+  const auth = await authorize("invoices.edit");
+  if (!auth.ok) return auth;
+  const { business } = auth.current;
   try {
     await deleteRecurringProfile(business.id, id);
   } catch (error) {
