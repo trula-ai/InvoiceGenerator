@@ -68,6 +68,10 @@ const SEVERITY_BY_KIND: Record<NotificationKind, NotificationSeverity> = {
   payment_verified: "success",
   payment_rejected: "warning",
   payment_reversed: "warning",
+  attribution_pending: "info",
+  attribution_approved: "success",
+  attribution_rejected: "warning",
+  attribution_reassigned: "info",
   invoice_paid: "success",
   invoice_due_soon: "warning",
   invoice_due_today: "urgent",
@@ -140,7 +144,7 @@ export async function loadInvoiceSnapshot(businessId: string, invoiceId: string,
 export type InvoiceEventKind = Exclude<NotificationKind, "invoice_due_soon" | "invoice_due_today" | "invoice_overdue" | "statement_sent">;
 
 export interface InvoiceEventExtra {
-  /** Email recipient for sent/reminder events. */
+  /** Email recipient for sent/reminder events; credited member's name for attribution events. */
   to?: string;
   /** Payment amount for payment_received. */
   amount?: string;
@@ -251,6 +255,35 @@ export function describeInvoiceEvent(kind: InvoiceEventKind, inv: InvoiceSnapsho
         amount: extra.amount ?? null,
         title: `Payment reversed for ${inv.invoiceNumber}`,
         body: `${money(extra.amount ?? "0")} from ${inv.clientName}${extra.receiptNumber ? ` (receipt ${extra.receiptNumber})` : ""} was reversed: ${extra.error ?? "no reason given"}. The balance is now ${money(inv.balanceDue)}.`,
+      };
+    case "attribution_pending":
+      return {
+        ...base,
+        amount: inv.total,
+        title: `Sales credit for ${inv.invoiceNumber} awaits approval`,
+        body: `${extra.to ?? "A team member"} was proposed as the salesperson for the ${money(inv.total)} sale to ${inv.clientName}. A sales manager needs to approve it.`,
+        href: "/dashboard/attribution",
+      };
+    case "attribution_approved":
+      return {
+        ...base,
+        amount: inv.total,
+        title: `Sales credit for ${inv.invoiceNumber} approved`,
+        body: `${extra.to ?? "The proposed salesperson"} is now credited with the ${money(inv.total)} sale to ${inv.clientName}.`,
+      };
+    case "attribution_rejected":
+      return {
+        ...base,
+        amount: inv.total,
+        title: `Sales credit for ${inv.invoiceNumber} rejected`,
+        body: `Crediting ${extra.to ?? "the proposed salesperson"} with the sale to ${inv.clientName} was rejected: ${extra.error ?? "no reason given"}. Propose the correct owner again.`,
+      };
+    case "attribution_reassigned":
+      return {
+        ...base,
+        amount: inv.total,
+        title: `Sales credit for ${inv.invoiceNumber} reassigned`,
+        body: `The ${money(inv.total)} sale to ${inv.clientName} is now credited to ${extra.to ?? "another member"}: ${extra.error ?? "no reason given"}.`,
       };
     case "invoice_paid":
       return {

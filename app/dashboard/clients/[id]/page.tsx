@@ -14,6 +14,7 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { EmailDialog } from "@/components/invoices/invoice-actions";
 import { PageHeader } from "@/components/shared/page-header";
 import { can, requireUser } from "@/lib/auth/current-user";
+import { getClientSalesOwner } from "@/lib/data/attribution";
 import { getClient, getClientInvoiceHistory } from "@/lib/data/clients";
 import { PAYABLE_STATUSES } from "@/lib/data/invoices";
 import { BASE_CURRENCY } from "@/lib/currency";
@@ -28,7 +29,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
   const current = await requireUser();
   const { business } = current;
   const { id } = await params;
-  const [client, history] = await Promise.all([getClient(business.id, id), getClientInvoiceHistory(business.id, id)]);
+  const [client, history, salesOwner] = await Promise.all([getClient(business.id, id), getClientInvoiceHistory(business.id, id), getClientSalesOwner(business.id, id)]);
   if (!client) notFound();
 
   const emailConfigured = isEmailConfigured();
@@ -90,6 +91,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
               <Row label="GSTIN" value={client.gstin} mono />
               <Row label="Address" value={address.length ? address.join("\n") : null} pre />
               {client.shippingAddress ? <Row label="Ship to" value={client.shippingAddress} pre /> : null}
+              <Row label="Sales owner" value={salesOwner ? `${salesOwner.name} (approved, internal)` : null} />
               <Row label="Reminders" value={client.autoReminders ? "Automatic reminders on" : "Automatic reminders off (manual only)"} />
               <Row label="Notes" value={client.notes} pre />
             </dl>

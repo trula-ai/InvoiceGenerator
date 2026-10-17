@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { RecordPaymentDialog } from "@/components/payments/record-payment-dialog";
+import type { SalespersonOption } from "@/lib/data/attribution";
 import type { DocumentKind, InvoiceStatus } from "@/db/schema";
 import {
   cancelInvoiceAction,
@@ -62,10 +63,12 @@ interface InvoiceActionsProps {
   installments?: { hasPlan: boolean; next: { sequence: number; count: number; outstanding: string } | null };
   /** Unpaid balance past the due date; words the reminder button more firmly. */
   isOverdue?: boolean;
+  /** Offered in the record-payment dialog when nobody is credited with the sale yet. */
+  salesCredit?: { salespeople: SalespersonOption[]; defaultUserId: string | null } | null;
 }
 
 export function InvoiceActions(props: InvoiceActionsProps) {
-  const { kind = "invoice", invoiceId, status, currency, balanceDue, hasPayments, editable, converted = false, clientEmail, publicToken, installments, isOverdue = false } = props;
+  const { kind = "invoice", invoiceId, status, currency, balanceDue, hasPayments, editable, converted = false, clientEmail, publicToken, installments, isOverdue = false, salesCredit = null } = props;
   const nextInstallment = installments?.next ? { amount: installments.next.outstanding, label: `Installment ${installments.next.sequence} of ${installments.next.count}` } : null;
   const [pending, startTransition] = useTransition();
   const label = documentLabel(kind);
@@ -119,7 +122,7 @@ export function InvoiceActions(props: InvoiceActionsProps) {
         <EmailDialog kind="reminder" invoiceId={invoiceId} clientEmail={clientEmail} emailConfigured={props.emailConfigured} overdue={isOverdue || status === "overdue"} />
       ) : null}
 
-      {payable ? <RecordPaymentDialog invoiceId={invoiceId} currency={currency} balanceDue={balanceDue} suggested={nextInstallment} /> : null}
+      {payable ? <RecordPaymentDialog invoiceId={invoiceId} currency={currency} balanceDue={balanceDue} suggested={nextInstallment} salesCredit={salesCredit} /> : null}
 
       {status === "draft" ? (
         <Button onClick={() => run(() => issueInvoiceAction(invoiceId), `${label} issued`)} disabled={pending}>

@@ -13,6 +13,7 @@ import {
   Package,
   Repeat,
   Settings,
+  UserRoundCheck,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -41,6 +42,7 @@ export const dashboardNav: NavItem[] = [
   { title: "Recurring", href: "/dashboard/recurring", icon: Repeat, permission: "invoices.view" },
   { title: "Payments", href: "/dashboard/payments", icon: CreditCard, permission: "payments.view", exact: true },
   { title: "Verification", href: "/dashboard/payments/verification", icon: BadgeCheck, permission: "payments.verify" },
+  { title: "Attribution", href: "/dashboard/attribution", icon: UserRoundCheck, permission: "attribution.approve" },
   { title: "History", href: "/dashboard/history", icon: History, permission: "payments.view" },
   { title: "Records", href: "/dashboard/records", icon: ClipboardList, permission: "invoices.view" },
   { title: "Reports", href: "/dashboard/reports", icon: ChartColumn, permission: "reports.view" },

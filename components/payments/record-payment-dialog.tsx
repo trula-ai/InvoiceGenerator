@@ -24,7 +24,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/shared/date-picker";
 import { PAYMENT_METHOD_OPTIONS } from "@/components/shared/options";
 import { SelectField } from "@/components/shared/select-field";
+import { salespersonOptions } from "@/components/attribution/attribution-actions";
+import { proposeAttributionAction } from "@/lib/actions/attribution";
 import { recordPaymentAction, uploadPaymentEvidenceAction } from "@/lib/actions/payments";
+import type { SalespersonOption } from "@/lib/data/attribution";
 import type { DuplicateMatch } from "@/lib/data/payments";
 import { todayIso } from "@/lib/fiscal-year";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -36,6 +39,8 @@ interface RecordPaymentDialogProps {
   balanceDue: string;
   /** Pre-fills the amount with the next installment instead of the full balance. */
   suggested?: { amount: string; label: string } | null;
+  /** When set, the dialog also asks who is credited with the sale (nobody is yet). */
+  salesCredit?: { salespeople: SalespersonOption[]; defaultUserId: string | null } | null;
 }
 
 function emptyValues(invoiceId: string, amount: string): PaymentFormInput {
@@ -48,8 +53,9 @@ function emptyValues(invoiceId: string, amount: string): PaymentFormInput {
  * finance user confirms the money arrived. Proof files are uploaded right
  * after the entry is created.
  */
-export function RecordPaymentDialog({ invoiceId, currency, balanceDue, suggested }: RecordPaymentDialogProps) {
+export function RecordPaymentDialog({ invoiceId, currency, balanceDue, suggested, salesCredit = null }: RecordPaymentDialogProps) {
   const [open, setOpen] = useState(false);
+  const [creditedUserId, setCreditedUserId] = useState(salesCredit?.defaultUserId ?? salesCredit?.salespeople[0]?.id ?? "");
   const [duplicates, setDuplicates] = useState<DuplicateMatch[] | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   // Bumped on reset so the uncontrolled file input is remounted empty.
@@ -88,8 +94,16 @@ export function RecordPaymentDialog({ invoiceId, currency, balanceDue, suggested
       else toast.error(`${file.name}: ${upload.error}`);
     }
 
+    // Sales credit is proposed separately from the payment: a failure here never undoes the payment.
+    let creditNote = "";
+    if (salesCredit && creditedUserId) {
+      const credit = await proposeAttributionAction({ invoiceId, creditedUserId });
+      creditNote = credit.ok ? " Sales credit proposed for approval." : ` Sales credit was not recorded: ${credit.error}`;
+      if (!credit.ok) toast.error(credit.error);
+    }
+
     toast.success("Payment recorded, awaiting finance verification", {
-      description: `${attached ? `${attached} proof file${attached === 1 ? "" : "s"} attached. ` : ""}It will count toward the invoice once verified.`,
+      description: `${attached ? `${attached} proof file${attached === 1 ? "" : "s"} attached. ` : ""}It will count toward the invoice once verified.${creditNote}`,
     });
     setOpen(false);
     reset();
@@ -171,6 +185,13 @@ export function RecordPaymentDialog({ invoiceId, currency, balanceDue, suggested
               />
               <FieldDescription>Screenshot, bank statement extract or gateway confirmation. PNG, JPEG, WebP or PDF, up to 5 MB each.</FieldDescription>
             </Field>
+            {salesCredit && salesCredit.salespeople.length ? (
+              <Field>
+                <FieldLabel htmlFor="salesCredit">Sales credited to</FieldLabel>
+                <SelectField id="salesCredit" options={salespersonOptions(salesCredit.salespeople)} value={creditedUserId} onValueChange={setCreditedUserId} />
+                <FieldDescription>Internal only, never printed. A sales manager approves it separately from the payment.</FieldDescription>
+              </Field>
+            ) : null}
             <Field>
               <FieldLabel htmlFor="paymentNotes">Notes</FieldLabel>
               <Textarea id="paymentNotes" rows={2} {...form.register("notes")} />

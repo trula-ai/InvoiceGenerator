@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AttributionCard } from "@/components/attribution/attribution-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { InstallmentScheduleTable } from "@/components/installments/installment-schedule-table";
 import { RemovePlanButton } from "@/components/installments/remove-plan-button";
@@ -19,6 +20,7 @@ import { can, requireUser } from "@/lib/auth/current-user";
 import { amountInWords } from "@/lib/amount-in-words";
 import { BASE_CURRENCY } from "@/lib/currency";
 import { getInvoiceDetail, isInvoiceEditable, type RelatedDocument } from "@/lib/data/invoices";
+import { getClientSalesOwner, getInvoiceAttribution, listAttributionEvents, listSalespeople } from "@/lib/data/attribution";
 import { mapPaymentEvidence } from "@/lib/data/payments";
 import { documentLabel, documentPath, secondDateLabel } from "@/lib/documents";
 import { isEmailConfigured } from "@/lib/email/provider";
@@ -41,6 +43,12 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
   const pendingPayments = payments.filter((p) => p.status === "pending");
   const pendingTotal = toMoney(pendingPayments.reduce((acc, p) => acc.plus(D(p.amount)), D(0)));
   const evidenceByPayment = kind === "invoice" ? await mapPaymentEvidence(business.id, payments.map((p) => p.id)) : new Map();
+  // Sales credit lives beside the payments, never inside them.
+  const canAssignCredit = kind === "invoice" && can(current, "attribution.assign");
+  const canApproveCredit = kind === "invoice" && can(current, "attribution.approve");
+  const [attribution, salespeople, clientOwner] = kind === "invoice" ? await Promise.all([getInvoiceAttribution(business.id, id), listSalespeople(business.id), getClientSalesOwner(business.id, client.id)]) : [null, [], null];
+  const attributionEvents = attribution ? await listAttributionEvents(business.id, attribution.id) : [];
+  const defaultCreditUserId = clientOwner?.userId ?? (salespeople.some((p) => p.id === current.user.id) ? current.user.id : null);
   const showGst = invoice.gstApplied;
   const isInvoice = kind === "invoice";
   const hasPlan = installments.length > 0;
@@ -84,6 +92,7 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
             balanceDue={invoice.balanceDue}
             hasPayments={verifiedPayments.length > 0}
             isOverdue={invoice.isOverdue}
+            salesCredit={isInvoice && !attribution && canAssignCredit && salespeople.length ? { salespeople, defaultUserId: defaultCreditUserId } : null}
             editable={isInvoiceEditable(invoice)}
             converted={!!invoice.convertedToId}
             clientEmail={client.email}
@@ -292,6 +301,19 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
           ) : null}
         </CardContent>
       </Card>
+
+      {isInvoice && invoice.status !== "draft" ? (
+        <AttributionCard
+          invoiceId={invoice.id}
+          attribution={attribution}
+          events={attributionEvents}
+          salespeople={salespeople}
+          defaultUserId={defaultCreditUserId}
+          currentUserId={current.user.id}
+          canAssign={canAssignCredit}
+          canApprove={canApproveCredit}
+        />
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {isInvoice ? (

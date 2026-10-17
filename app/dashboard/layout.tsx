@@ -5,6 +5,7 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { can, requireUser } from "@/lib/auth/current-user";
 import { getPendingInvoiceCount } from "@/lib/data/dashboard";
+import { countPendingAttributions } from "@/lib/data/attribution";
 import { getUnreadNotificationCount } from "@/lib/data/notifications";
 import { countPendingPayments } from "@/lib/data/payments";
 import { maybeRunDailyChecks } from "@/lib/email/due-reminders";
@@ -12,10 +13,11 @@ import { maybeRunDailyChecks } from "@/lib/email/due-reminders";
 export default async function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
   const current = await requireUser();
   const { user, business, permissions } = current;
-  const [pendingCount, unreadCount, toVerify] = await Promise.all([
+  const [pendingCount, unreadCount, toVerify, toApprove] = await Promise.all([
     getPendingInvoiceCount(business.id),
     getUnreadNotificationCount(business.id),
     can(current, "payments.verify") ? countPendingPayments(business.id) : Promise.resolve(0),
+    can(current, "attribution.approve") ? countPendingAttributions(business.id) : Promise.resolve(0),
   ]);
 
   // Due-date scan and reminder emails, once an hour per business, after the
@@ -26,7 +28,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
     <SidebarProvider>
       <DashboardSidebar
         workspaceName={business.name}
-        badges={{ "/dashboard/invoices": pendingCount, "/dashboard/notifications": unreadCount, "/dashboard/payments/verification": toVerify }}
+        badges={{ "/dashboard/invoices": pendingCount, "/dashboard/notifications": unreadCount, "/dashboard/payments/verification": toVerify, "/dashboard/attribution": toApprove }}
         permissions={permissions}
       />
       <SidebarInset>

@@ -23,6 +23,7 @@ export * from "./payments";
 export * from "./payment-orders";
 export * from "./recurring-profiles";
 export * from "./invoice-installments";
+export * from "./sale-attributions";
 export * from "./email-logs";
 export * from "./exchange-rates";
 export * from "./notifications";
