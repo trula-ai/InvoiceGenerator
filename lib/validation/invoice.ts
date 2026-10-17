@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { SUPPLY_TYPES } from "@/lib/tax";
+
 import {
   currencyCode,
   isoDateString,
@@ -41,6 +43,8 @@ export const invoiceSchema = z
     exchangeRate: rateString,
     exchangeRateSource: z.enum(["api", "manual", "base"]),
     placeOfSupplyCode: optionalStateCode,
+    /** GST classification; derived from the client when omitted, validated on the server. */
+    supplyType: z.enum(SUPPLY_TYPES).optional(),
     discountType: z.enum(["none", "percent", "fixed"]),
     discountValue: moneyString.or(z.literal("")).transform((v) => (v === "" ? "0" : v)),
     notes: optionalText(4000),

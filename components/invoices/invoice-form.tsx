@@ -28,6 +28,7 @@ import type { RateQuote } from "@/lib/data/exchange-rates";
 import type { ItemOption } from "@/lib/data/items";
 import { amountInWords } from "@/lib/amount-in-words";
 import { calculateInvoice } from "@/lib/calculations";
+import { SUPPLY_TYPES, SUPPLY_TYPE_HELP, SUPPLY_TYPE_LABELS, isForeignSupply, isIndia, suggestSupplyType, supplyTypeProblem, taxTreatmentFor, type SupplyType } from "@/lib/tax";
 import { BASE_CURRENCY } from "@/lib/currency";
 import { documentLabel, secondDateLabel } from "@/lib/documents";
 import { addDaysIso, todayIso } from "@/lib/fiscal-year";
@@ -60,6 +61,9 @@ export interface ClientOption {
 export interface BusinessContext {
   gstEnabled: boolean;
   stateCode: string | null;
+  /** Letter of Undertaking for zero-rated exports; null when none is on file. */
+  lutNumber: string | null;
+  lutValidUntil: string | null;
   defaultCurrency: string;
   paymentTermsDays: number;
   quoteValidityDays: number;
@@ -144,6 +148,8 @@ export function InvoiceForm({
       exchangeRate: initialCurrency === BASE_CURRENCY ? "1" : (initialRate?.rate ?? ""),
       exchangeRateSource: initialCurrency === BASE_CURRENCY ? "base" : initialRate ? "api" : "manual",
       placeOfSupplyCode: initialClient?.stateCode ?? business.stateCode ?? "",
+      // No saved values here (this branch is the blank form), so classify from the preselected client.
+      supplyType: business.gstEnabled ? suggestSupplyType({ clientCountry: initialClient?.country ?? "India", clientStateCode: initialClient?.stateCode, businessStateCode: business.stateCode, placeOfSupplyCode: initialClient?.stateCode ?? business.stateCode }) : undefined,
       discountType: "none",
       discountValue: "",
       notes: business.invoiceNotes ?? "",
@@ -160,7 +166,14 @@ export function InvoiceForm({
   const values = useWatch({ control });
   const currency = values.currency ?? business.defaultCurrency;
   const selectedClient = clients.find((c) => c.id === values.clientId);
-  const isInterState = business.gstEnabled && !!values.placeOfSupplyCode && values.placeOfSupplyCode !== business.stateCode;
+  // Until a client is chosen the form assumes a domestic client; a foreign client flips it to international on selection.
+  const supplyCtx = { clientCountry: selectedClient?.country ?? "India", clientStateCode: selectedClient?.stateCode, businessStateCode: business.stateCode, placeOfSupplyCode: values.placeOfSupplyCode };
+  const supplyType: SupplyType = (values.supplyType as SupplyType | undefined) ?? suggestSupplyType(supplyCtx);
+  const taxTreatment = business.gstEnabled ? taxTreatmentFor(supplyType) : undefined;
+  const isInterState = business.gstEnabled && taxTreatment !== "cgst_sgst";
+  const noTax = taxTreatment === "zero_rated" || taxTreatment === "exempt";
+  const supplyProblem = business.gstEnabled ? supplyTypeProblem(supplyType, supplyCtx, { lutNumber: business.lutNumber, lutValidUntil: business.lutValidUntil }, values.issueDate ?? "") : null;
+  const foreignClient = !!selectedClient && !isIndia(selectedClient.country);
 
   const clientOptions = useMemo<SelectOption[]>(
     () => clients.map((c) => ({ value: c.id, label: `${c.name} · ${c.type.toUpperCase()} · ${c.currency}` })),
@@ -174,10 +187,11 @@ export function InvoiceForm({
       discountValue: num(values.discountValue),
       gstEnabled: business.gstEnabled,
       isInterState,
+      taxTreatment,
       exchangeRate: num(values.exchangeRate) === "0" ? "1" : num(values.exchangeRate),
       roundTotals: business.roundTotals,
     });
-  }, [values.items, values.discountType, values.discountValue, values.exchangeRate, business.gstEnabled, business.roundTotals, isInterState]);
+  }, [values.items, values.discountType, values.discountValue, values.exchangeRate, business.gstEnabled, business.roundTotals, isInterState, taxTreatment]);
 
   function loadRate(code: string) {
     if (code === BASE_CURRENCY) {
@@ -212,7 +226,11 @@ export function InvoiceForm({
     if (!currentShipTo || currentShipTo === (previous?.shippingAddress ?? "").trim()) {
       setValue("shipToAddress", client.shippingAddress ?? "");
     }
-    if (business.gstEnabled) setValue("placeOfSupplyCode", client.stateCode ?? business.stateCode ?? "");
+    if (business.gstEnabled) {
+      setValue("placeOfSupplyCode", client.stateCode ?? business.stateCode ?? "");
+      // Re-derive the classification for the new client; a foreign client starts as taxable, never as an export.
+      setValue("supplyType", suggestSupplyType({ clientCountry: client.country, clientStateCode: client.stateCode, businessStateCode: business.stateCode, placeOfSupplyCode: client.stateCode ?? business.stateCode }));
+    }
     if (client.currency !== getValues("currency")) {
       setValue("currency", client.currency);
       if (!manualRate) loadRate(client.currency);
@@ -317,6 +335,36 @@ export function InvoiceForm({
                   ) : null}
                 </Field>
                 {business.gstEnabled ? (
+                  <Field data-invalid={!!supplyProblem || !!errors.supplyType} className="sm:col-span-2">
+                    <FieldLabel htmlFor="supplyType">GST classification</FieldLabel>
+                    <Controller
+                      control={control}
+                      name="supplyType"
+                      render={({ field }) => (
+                        <SelectField
+                          id="supplyType"
+                          options={SUPPLY_TYPES.map((t) => ({ value: t, label: SUPPLY_TYPE_LABELS[t] }))}
+                          value={field.value ?? supplyType}
+                          onValueChange={(v) => {
+                            field.onChange(v);
+                            if (v && isForeignSupply(v as SupplyType)) setValue("placeOfSupplyCode", "");
+                            else if (!values.placeOfSupplyCode) setValue("placeOfSupplyCode", selectedClient?.stateCode ?? business.stateCode ?? "");
+                          }}
+                          invalid={!!supplyProblem}
+                        />
+                      )}
+                    />
+                    <FieldDescription className={supplyProblem ? "text-destructive" : undefined}>{supplyProblem ?? SUPPLY_TYPE_HELP[supplyType]}</FieldDescription>
+                    {foreignClient && !supplyProblem ? (
+                      <FieldDescription className="text-amber-600 dark:text-amber-400">
+                        A foreign address alone does not make this an export. Choose an export classification only once the export-of-services conditions (place of supply,
+                        payment in convertible currency, not an intermediary) have been confirmed with your tax adviser.
+                      </FieldDescription>
+                    ) : null}
+                    <FieldError errors={[errors.supplyType]} />
+                  </Field>
+                ) : null}
+                {business.gstEnabled && !isForeignSupply(supplyType) ? (
                   <Field data-invalid={!!errors.placeOfSupplyCode}>
                     <FieldLabel htmlFor="placeOfSupplyCode">Place of supply</FieldLabel>
                     <Controller
@@ -335,6 +383,7 @@ export function InvoiceForm({
                     />
                     <FieldDescription>
                       {values.placeOfSupplyCode ? (isInterState ? "Inter-state supply · IGST applies" : "Intra-state supply · CGST + SGST apply") : "Select to determine GST split"}
+                      {supplyType === "exempt" ? " · exempt, no tax charged" : ""}
                     </FieldDescription>
                     <FieldError errors={[errors.placeOfSupplyCode]} />
                   </Field>
@@ -572,7 +621,9 @@ export function InvoiceForm({
             <SummaryRow label="Subtotal" value={formatCurrency(totals.subtotal, currency)} />
             {values.discountType !== "none" ? <SummaryRow label="Discount" value={`- ${formatCurrency(totals.discountAmount, currency)}`} /> : null}
             {business.gstEnabled ? (
-              isInterState ? (
+              noTax ? (
+                <SummaryRow label={supplyType === "exempt" ? "Tax (exempt supply)" : "IGST (zero-rated export)"} value={formatCurrency("0", currency)} />
+              ) : isInterState ? (
                 <SummaryRow label="IGST" value={formatCurrency(totals.igstAmount, currency)} />
               ) : (
                 <>

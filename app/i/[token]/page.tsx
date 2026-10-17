@@ -17,6 +17,7 @@ import { getInvoiceDetailByToken } from "@/lib/data/invoices";
 import { QUOTE_OPEN_STATUSES, documentLabel, secondDateLabel, statusLabel } from "@/lib/documents";
 import { formatCurrency, formatDate, formatRate } from "@/lib/format";
 import { summariseByHsn } from "@/lib/hsn-summary";
+import { SUPPLY_TYPE_SHORT, supplyDeclaration } from "@/lib/tax";
 import { amountDueNow, installmentLabel, nextUnpaidInstallment } from "@/lib/installments";
 import { D, isZero } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validation/payment";
@@ -153,6 +154,12 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
                   <Line label={`Discount${invoice.discountType === "percent" ? ` (${Number(invoice.discountValue).toFixed(2)}%)` : ""}`} value={`- ${formatCurrency(invoice.discountAmount, cur)}`} />
                   <Line label="Taxable amount" value={formatCurrency(invoice.taxableAmount, cur)} />
                 </>
+              ) : null}
+              {showGst && invoice.supplyType ? (
+                <p className="pb-1 text-xs text-muted-foreground">
+                  {SUPPLY_TYPE_SHORT[invoice.supplyType]}
+                  {supplyDeclaration(invoice.supplyType, invoice.lutReference) ? ` · ${supplyDeclaration(invoice.supplyType, invoice.lutReference)}` : ""}
+                </p>
               ) : null}
               {showGst ? (
                 invoice.isInterState ? (

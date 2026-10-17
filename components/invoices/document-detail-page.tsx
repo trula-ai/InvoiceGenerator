@@ -29,6 +29,7 @@ import { formatCurrency, formatDate, formatDateTime, formatRate } from "@/lib/fo
 import { installmentOutstanding, nextUnpaidInstallment } from "@/lib/installments";
 import { D, isZero, toMoney } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validation/payment";
+import { SUPPLY_TYPE_SHORT, supplyDeclaration } from "@/lib/tax";
 
 /** Shared detail page for invoices, quotes and credit notes. */
 export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id: string }) {
@@ -176,7 +177,8 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
             {cur !== BASE_CURRENCY ? (
               <Meta label="Exchange rate" value={`1 ${cur} = ${formatRate(invoice.exchangeRate)} ${BASE_CURRENCY} (${invoice.exchangeRateSource})`} />
             ) : null}
-            <Meta label="GST" value={showGst ? (invoice.isInterState ? "Inter-state · IGST" : "Intra-state · CGST + SGST") : "Not applied"} />
+            <Meta label="GST" value={showGst ? (invoice.supplyType ? SUPPLY_TYPE_SHORT[invoice.supplyType] : invoice.isInterState ? "Inter-state · IGST" : "Intra-state · CGST + SGST") : "Not applied"} />
+            {showGst && supplyDeclaration(invoice.supplyType, invoice.lutReference) ? <Meta label="Declaration" value={supplyDeclaration(invoice.supplyType, invoice.lutReference)} muted /> : null}
             {showGst && invoice.placeOfSupply ? <Meta label="Place of supply" value={`${invoice.placeOfSupply} (${invoice.placeOfSupplyCode})`} /> : null}
             {showGst && invoice.businessGstin ? <Meta label="Your GSTIN" value={invoice.businessGstin} mono /> : null}
           </CardContent>

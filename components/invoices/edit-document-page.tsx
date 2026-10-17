@@ -52,6 +52,8 @@ export async function EditDocumentPage({ kind, id }: { kind: DocumentKind; id: s
         business={{
           gstEnabled: business.gstEnabled,
           stateCode: business.stateCode,
+          lutNumber: business.lutNumber,
+          lutValidUntil: business.lutValidUntil,
           defaultCurrency: business.defaultCurrency,
           paymentTermsDays: business.paymentTermsDays,
           quoteValidityDays: business.quoteValidityDays,
@@ -71,6 +73,7 @@ export async function EditDocumentPage({ kind, id }: { kind: DocumentKind; id: s
           exchangeRate: invoice.exchangeRate,
           exchangeRateSource: invoice.exchangeRateSource,
           placeOfSupplyCode: invoice.placeOfSupplyCode ?? "",
+          supplyType: invoice.supplyType ?? undefined,
           discountType: invoice.discountType,
           discountValue: invoice.discountType === "none" ? "" : invoice.discountValue,
           notes: invoice.notes ?? "",

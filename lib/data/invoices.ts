@@ -29,6 +29,7 @@ import { nextDocumentNumber } from "@/lib/document-number";
 import { QUOTE_CONVERTIBLE_STATUSES, QUOTE_OPEN_STATUSES, documentLabel } from "@/lib/documents";
 import { addDaysIso, todayIso } from "@/lib/fiscal-year";
 import { stateNameForCode } from "@/lib/india-states";
+import { FOREIGN_PLACE_OF_SUPPLY_CODE, isForeignSupply, suggestSupplyType, supplyTypeProblem, taxTreatmentFor, type SupplyType } from "@/lib/tax";
 import { D, compare, isPositive, isZero, toInr, toMoney } from "@/lib/money";
 import type { InvoiceFormValues } from "@/lib/validation/invoice";
 
@@ -291,8 +292,18 @@ async function buildInvoiceRow(business: Business, values: InvoiceFormValues) {
   if (!client) throw new Error("Client not found.");
 
   const gstApplied = business.gstEnabled;
-  const placeOfSupplyCode = values.placeOfSupplyCode ?? client.stateCode ?? business.stateCode ?? null;
-  const isInterState = gstApplied && !!placeOfSupplyCode && placeOfSupplyCode !== business.stateCode;
+  // GST classification is explicit (lib/tax.ts): a foreign address alone never zero-rates a supply.
+  const supplyCtx = { clientCountry: client.country, clientStateCode: client.stateCode, businessStateCode: business.stateCode, placeOfSupplyCode: values.placeOfSupplyCode ?? null };
+  const supplyType: SupplyType | null = gstApplied ? (values.supplyType ?? suggestSupplyType(supplyCtx)) : null;
+  if (supplyType) {
+    const problem = supplyTypeProblem(supplyType, supplyCtx, { lutNumber: business.lutNumber, lutValidUntil: business.lutValidUntil }, values.issueDate);
+    if (problem) throw new Error(problem);
+  }
+  const taxTreatment = supplyType ? taxTreatmentFor(supplyType) : undefined;
+  const noTax = taxTreatment === "zero_rated" || taxTreatment === "exempt";
+  const placeOfSupplyCode = supplyType && isForeignSupply(supplyType) ? FOREIGN_PLACE_OF_SUPPLY_CODE : (values.placeOfSupplyCode ?? client.stateCode ?? business.stateCode ?? null);
+  const isInterState = gstApplied && (taxTreatment ? taxTreatment !== "cgst_sgst" : !!placeOfSupplyCode && placeOfSupplyCode !== business.stateCode);
+  const lutReference = supplyType === "export_lut" ? (business.lutNumber ?? null) : null;
 
   const calc = calculateInvoice({
     items: values.items,
@@ -300,6 +311,7 @@ async function buildInvoiceRow(business: Business, values: InvoiceFormValues) {
     discountValue: values.discountValue,
     gstEnabled: gstApplied,
     isInterState,
+    taxTreatment,
     exchangeRate: values.exchangeRate,
     roundTotals: business.roundTotals,
   });
@@ -321,6 +333,8 @@ async function buildInvoiceRow(business: Business, values: InvoiceFormValues) {
     placeOfSupply: stateNameForCode(placeOfSupplyCode),
     placeOfSupplyCode,
     isInterState,
+    supplyType,
+    lutReference,
     subtotal: calc.subtotal,
     discountType: values.discountType,
     discountValue: values.discountType === "none" ? "0" : values.discountValue,
@@ -345,7 +359,8 @@ async function buildInvoiceRow(business: Business, values: InvoiceFormValues) {
     quantity: item.quantity,
     unit: item.unit ?? null,
     unitPrice: item.unitPrice,
-    taxRate: item.taxRate,
+    // Zero-rated and exempt supplies print 0% so the document and HSN summary agree with the totals.
+    taxRate: noTax ? "0" : item.taxRate,
     lineSubtotal: calc.items[i].lineSubtotal,
     discountAmount: calc.items[i].discountAmount,
     taxableAmount: calc.items[i].taxableAmount,
@@ -715,6 +730,7 @@ export async function convertQuoteToInvoice(business: Business, quoteId: string)
     exchangeRate: quote.exchangeRate,
     exchangeRateSource: quote.exchangeRateSource,
     placeOfSupplyCode: quote.placeOfSupplyCode ?? undefined,
+    supplyType: quote.supplyType ?? undefined,
     discountType: quote.discountType,
     discountValue: quote.discountType === "none" ? "0" : quote.discountValue,
     notes: quote.notes ?? undefined,

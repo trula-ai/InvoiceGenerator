@@ -30,6 +30,8 @@ export async function updateBusinessSettings(businessId: string, values: Busines
       gstEnabled: values.gstEnabled,
       gstin: values.gstin ?? null,
       pan: values.pan ?? null,
+      lutNumber: values.lutNumber ?? null,
+      lutValidUntil: values.lutValidUntil ?? null,
       defaultCurrency: values.defaultCurrency,
       invoicePrefix: values.invoicePrefix,
       quotePrefix: values.quotePrefix,

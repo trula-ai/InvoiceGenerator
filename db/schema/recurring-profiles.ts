@@ -27,6 +27,8 @@ export interface RecurringTemplate {
   currency: string;
   exchangeRate: string;
   placeOfSupplyCode?: string;
+  /** GST classification copied from the source invoice; re-validated on every run. */
+  supplyType?: "domestic_intra_state" | "domestic_inter_state" | "export_lut" | "export_with_igst" | "international_taxable" | "exempt";
   discountType: "none" | "percent" | "fixed";
   discountValue: string;
   poNumber?: string;

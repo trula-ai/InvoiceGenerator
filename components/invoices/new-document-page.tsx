@@ -89,6 +89,7 @@ export async function NewDocumentPage({ kind, searchParams }: { kind: DocumentKi
           source.invoice.currency === BASE_CURRENCY ? "1" : kind === "credit_note" ? source.invoice.exchangeRate : (initialRate?.rate ?? source.invoice.exchangeRate),
         exchangeRateSource: source.invoice.currency === BASE_CURRENCY ? "base" : kind === "credit_note" ? "manual" : initialRate ? "api" : "manual",
         placeOfSupplyCode: source.invoice.placeOfSupplyCode ?? "",
+        supplyType: source.invoice.supplyType ?? undefined,
         discountType: source.invoice.discountType,
         discountValue: source.invoice.discountType === "none" ? "" : source.invoice.discountValue,
         notes: kind === "credit_note" ? "" : (source.invoice.notes ?? ""),
@@ -150,6 +151,8 @@ export async function NewDocumentPage({ kind, searchParams }: { kind: DocumentKi
         business={{
           gstEnabled: business.gstEnabled,
           stateCode: business.stateCode,
+          lutNumber: business.lutNumber,
+          lutValidUntil: business.lutValidUntil,
           defaultCurrency: business.defaultCurrency,
           paymentTermsDays: business.paymentTermsDays,
           quoteValidityDays: business.quoteValidityDays,

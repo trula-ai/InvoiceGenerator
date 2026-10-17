@@ -6,6 +6,7 @@ import { formatAmount, formatCurrencyCode, formatDate, formatRate } from "@/lib/
 import { BASE_CURRENCY } from "@/lib/currency";
 import { documentLabel, documentTitle, secondDateLabel, statusLabel } from "@/lib/documents";
 import { summariseByHsn } from "@/lib/hsn-summary";
+import { SUPPLY_TYPE_SHORT, supplyDeclaration } from "@/lib/tax";
 import { INSTALLMENT_STATE_LABELS, installmentOutstanding, installmentState } from "@/lib/installments";
 import { todayIso } from "@/lib/fiscal-year";
 import { D, isZero } from "@/lib/money";
@@ -297,6 +298,15 @@ export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
                 </View>
               ))}
             </View>
+          </View>
+        ) : null}
+
+        {/* GST classification and statutory endorsement */}
+        {showGst && invoice.supplyType ? (
+          <View style={s.block} wrap={false}>
+            <Text style={s.label}>GST classification</Text>
+            <Text>{SUPPLY_TYPE_SHORT[invoice.supplyType]}</Text>
+            {supplyDeclaration(invoice.supplyType, invoice.lutReference) ? <Text style={s.muted}>{supplyDeclaration(invoice.supplyType, invoice.lutReference)}</Text> : null}
           </View>
         ) : null}
 

@@ -56,6 +56,14 @@ export const invoiceStatusEnum = pgEnum("invoice_status", [
 ]);
 
 export const discountTypeEnum = pgEnum("discount_type", ["none", "percent", "fixed"]);
+
+/**
+ * GST classification of the supply, chosen explicitly on every GST invoice
+ * (see lib/tax.ts). Null when GST is not applied. Kept with the invoice so
+ * a later change to the client's address or the business's LUT never
+ * reclassifies an issued document.
+ */
+export const supplyTypeEnum = pgEnum("supply_type", ["domestic_intra_state", "domestic_inter_state", "export_lut", "export_with_igst", "international_taxable", "exempt"]);
 export const exchangeRateSourceEnum = pgEnum("exchange_rate_source", ["api", "manual", "base"]);
 
 /** Money columns: PostgreSQL numeric, never float. Drizzle returns them as strings. */
@@ -116,8 +124,11 @@ export const invoices = pgTable(
     clientGstin: varchar({ length: 15 }),
     placeOfSupply: varchar({ length: 100 }),
     placeOfSupplyCode: char({ length: 2 }),
-    /** True when business state != place of supply (IGST); false for CGST+SGST. */
+    /** True when tax is booked as IGST (or would be, for zero-rated and exempt supplies); false for CGST+SGST. */
     isInterState: boolean().notNull().default(false),
+    supplyType: supplyTypeEnum(),
+    /** LUT number in force when a zero-rated export was issued; frozen here. */
+    lutReference: varchar({ length: 40 }),
 
     // --- Amounts (invoice currency) -----------------------------------------
     subtotal: money().notNull(),
@@ -223,3 +234,4 @@ export type NewInvoiceItem = typeof invoiceItems.$inferInsert;
 export type InvoiceStatus = (typeof invoiceStatusEnum.enumValues)[number];
 export type DocumentKind = (typeof documentKindEnum.enumValues)[number];
 export type DiscountType = (typeof discountTypeEnum.enumValues)[number];
+export type SupplyTypeValue = (typeof supplyTypeEnum.enumValues)[number];

@@ -29,7 +29,7 @@ type SectionId = "profile" | "address" | "tax" | "invoice" | "receipts" | "remin
 const SECTION_FIELDS: Record<SectionId, (keyof BusinessSettingsInput)[]> = {
   profile: ["name", "legalName", "email", "phone", "website", "pan", "logoDataUrl"],
   address: ["addressLine1", "addressLine2", "city", "postalCode", "country", "stateCode", "state"],
-  tax: ["gstEnabled", "gstin"],
+  tax: ["gstEnabled", "gstin", "lutNumber", "lutValidUntil"],
   invoice: [
     "invoicePrefix",
     "quotePrefix",
@@ -91,6 +91,8 @@ export function BusinessSettingsForm({ business, razorpayConfigured = false }: {
       country: business.country,
       gstEnabled: business.gstEnabled,
       gstin: business.gstin ?? "",
+      lutNumber: business.lutNumber ?? "",
+      lutValidUntil: business.lutValidUntil ?? "",
       pan: business.pan ?? "",
       defaultCurrency: business.defaultCurrency,
       invoicePrefix: business.invoicePrefix,
@@ -291,12 +293,28 @@ export function BusinessSettingsForm({ business, razorpayConfigured = false }: {
               <FieldLabel htmlFor="gstEnabled">GST enabled</FieldLabel>
             </Field>
             {gstEnabled ? (
+              <>
               <Field data-invalid={!!errors.gstin}>
                 <FieldLabel htmlFor="gstin">GSTIN</FieldLabel>
                 <Input id="gstin" className="uppercase" placeholder="22AAAAA0000A1Z5" {...form.register("gstin")} />
                 <FieldDescription>Printed on tax invoices. Required while GST is enabled.</FieldDescription>
                 <FieldError errors={[errors.gstin]} />
               </Field>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field data-invalid={!!errors.lutNumber}>
+                  <FieldLabel htmlFor="lutNumber">Letter of Undertaking (LUT) number</FieldLabel>
+                  <Input id="lutNumber" className="uppercase" placeholder="AD2904260000123" {...form.register("lutNumber")} />
+                  <FieldDescription>Needed to issue zero-rated exports without paying IGST. Leave empty if you have none.</FieldDescription>
+                  <FieldError errors={[errors.lutNumber]} />
+                </Field>
+                <Field data-invalid={!!errors.lutValidUntil}>
+                  <FieldLabel htmlFor="lutValidUntil">LUT valid until</FieldLabel>
+                  <Input id="lutValidUntil" type="date" {...form.register("lutValidUntil")} />
+                  <FieldDescription>Usually the end of the financial year it was filed for. Exports under LUT must be issued on or before this date.</FieldDescription>
+                  <FieldError errors={[errors.lutValidUntil]} />
+                </Field>
+              </div>
+              </>
             ) : null}
           </FieldGroup>
         </Section>

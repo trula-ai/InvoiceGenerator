@@ -1,4 +1,4 @@
-import { boolean, char, integer, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, char, date, integer, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 
 /**
  * A business (tenant). Every domain row carries a `businessId` and every query
@@ -29,6 +29,10 @@ export const businesses = pgTable("businesses", {
   gstEnabled: boolean().notNull().default(false),
   gstin: varchar({ length: 15 }),
   pan: varchar({ length: 10 }),
+  /** Letter of Undertaking (ARN) that allows zero-rated exports without paying IGST. */
+  lutNumber: varchar({ length: 40 }),
+  /** Last day the LUT covers (financial-year based). Exports under LUT need an issue date on or before it. */
+  lutValidUntil: date(),
 
   /** ISO 4217 code used when creating new invoices by default. */
   defaultCurrency: char({ length: 3 }).notNull().default("INR"),

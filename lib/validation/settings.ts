@@ -36,6 +36,14 @@ export const businessSettingsSchema = z
     gstEnabled: z.boolean(),
     gstin: optionalGstin,
     pan: optionalText(10),
+    /** Letter of Undertaking ARN for zero-rated exports; optional. */
+    lutNumber: optionalText(40),
+    lutValidUntil: z
+      .string()
+      .trim()
+      .optional()
+      .transform((v) => (v ? v : undefined))
+      .refine((v) => v === undefined || /^\d{4}-\d{2}-\d{2}$/.test(v), "Enter a valid date"),
     defaultCurrency: currencyCode,
     invoicePrefix: numberPrefix,
     quotePrefix: numberPrefix,
@@ -85,6 +93,7 @@ export const businessSettingsSchema = z
     message: "Business state is required when GST is enabled",
     path: ["stateCode"],
   })
+  .refine((v) => !v.lutNumber || !!v.lutValidUntil, { message: "Enter the date your LUT is valid until", path: ["lutValidUntil"] })
   .refine((v) => new Set([v.invoicePrefix, v.quotePrefix, v.creditNotePrefix]).size === 3, {
     message: "Invoice, quote and credit note prefixes must differ",
     path: ["quotePrefix"],

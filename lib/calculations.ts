@@ -1,4 +1,5 @@
 import { D, Decimal, toMoney, type DecimalInput } from "@/lib/money";
+import type { TaxTreatment } from "@/lib/tax";
 
 /**
  * Invoice calculations.
@@ -41,6 +42,11 @@ export interface CalculationInput {
   gstEnabled: boolean;
   /** Only meaningful when gstEnabled. */
   isInterState: boolean;
+  /**
+   * GST treatment of the supply. When given it overrides `isInterState`:
+   * zero-rated and exempt supplies book no tax at all, whatever the line rates.
+   */
+  taxTreatment?: TaxTreatment;
   /** INR per 1 unit of the invoice currency. Use 1 for INR invoices. */
   exchangeRate: DecimalInput;
   /** Round the grand total to the nearest whole unit and book the difference as round-off. */
@@ -112,14 +118,17 @@ export function calculateInvoice(input: CalculationInput): CalculationResult {
   let igst = ZERO;
   let taxTotal = ZERO;
 
+  const treatment: TaxTreatment | undefined = input.gstEnabled ? (input.taxTreatment ?? (input.isInterState ? "igst" : "cgst_sgst")) : undefined;
+  const noTax = treatment === "zero_rated" || treatment === "exempt";
+
   const items: CalculationItemResult[] = input.items.map((item, i) => {
     const lineSubtotal = lineSubtotals[i];
     const discountAmount = allocations[i];
     const taxable = lineSubtotal.minus(discountAmount);
-    const rate = D(item.taxRate);
+    const rate = noTax ? ZERO : D(item.taxRate);
 
     let lineTax: Decimal;
-    if (input.gstEnabled && !input.isInterState) {
+    if (treatment === "cgst_sgst") {
       // Split first, then round each half, so CGST + SGST equals the booked tax.
       const half = round2(taxable.times(rate).div(100).div(2));
       cgst = cgst.plus(half);
