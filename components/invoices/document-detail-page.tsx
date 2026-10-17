@@ -22,6 +22,7 @@ import { BASE_CURRENCY } from "@/lib/currency";
 import { getInvoiceDetail, isInvoiceEditable, type RelatedDocument } from "@/lib/data/invoices";
 import { getClientSalesOwner, getInvoiceAttribution, listAttributionEvents, listSalespeople } from "@/lib/data/attribution";
 import { mapPaymentEvidence } from "@/lib/data/payments";
+import { mapReceipts } from "@/lib/data/receipts";
 import { documentLabel, documentPath, secondDateLabel } from "@/lib/documents";
 import { isEmailConfigured } from "@/lib/email/provider";
 import { formatCurrency, formatDate, formatDateTime, formatRate } from "@/lib/format";
@@ -48,6 +49,9 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
   const canApproveCredit = kind === "invoice" && can(current, "attribution.approve");
   const [attribution, salespeople, clientOwner] = kind === "invoice" ? await Promise.all([getInvoiceAttribution(business.id, id), listSalespeople(business.id), getClientSalesOwner(business.id, client.id)]) : [null, [], null];
   const attributionEvents = attribution ? await listAttributionEvents(business.id, attribution.id) : [];
+  const receiptsByPayment = kind === "invoice" ? await mapReceipts(business.id, payments.map((p) => p.id)) : new Map();
+  // Receipts wait for finance verification and, when the business says so, for the approved sales credit (D-07).
+  const creditHoldsReceipts = business.receiptRequiresAttribution && attribution?.status !== "approved";
   const defaultCreditUserId = clientOwner?.userId ?? (salespeople.some((p) => p.id === current.user.id) ? current.user.id : null);
   const showGst = invoice.gstApplied;
   const isInvoice = kind === "invoice";
@@ -361,6 +365,19 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
                               {p.receivingAccount ? ` · into ${p.receivingAccount}` : ""}
                             </span>
                             {reason ? <span className="block text-xs font-normal text-destructive">{p.status === "rejected" ? "Rejected" : "Reversed"}: {reason}</span> : null}
+                            {p.status === "verified" ? (
+                              <span className="block text-xs font-normal text-muted-foreground">
+                                {(() => {
+                                  const r = receiptsByPayment.get(p.id);
+                                  if (!r) return "Receipt not issued";
+                                  if (r.voidedAt) return "Receipt void";
+                                  if (creditHoldsReceipts) return "Receipt held until the sales credit is approved";
+                                  if (r.deliveryStatus === "sent") return `Receipt sent to ${r.lastSentTo}${r.lastSentAt ? ` on ${formatDateTime(r.lastSentAt)}` : ""}${r.sentCount > 1 ? ` (${r.sentCount} times)` : ""}`;
+                                  if (r.deliveryStatus === "failed") return `Receipt send failed${r.lastSentTo ? ` to ${r.lastSentTo}` : ""}: ${r.lastError ?? "unknown error"}`;
+                                  return "Receipt ready, not sent yet";
+                                })()}
+                              </span>
+                            ) : null}
                             <div className="mt-1">
                               <EvidenceList paymentId={p.id} evidence={evidenceByPayment.get(p.id) ?? []} emptyLabel={p.status === "pending" ? "No proof attached" : null} />
                             </div>
@@ -386,11 +403,23 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
                               ) : null}
                               {p.status === "verified" ? (
                                 <>
-                                  <Button variant="ghost" size="icon-sm" aria-label="Download receipt" nativeButton={false} render={<a href={`/api/payments/${p.id}/receipt?download=1`} />}>
-                                    <Download />
-                                  </Button>
-                                  {can(current, "receipts.send") ? (
-                                    <EmailReceiptButton compact paymentId={p.id} receiptNumber={p.receiptNumber ?? ""} clientEmail={client.email} emailConfigured={isEmailConfigured()} />
+                                  {!creditHoldsReceipts && receiptsByPayment.get(p.id) && !receiptsByPayment.get(p.id)?.voidedAt ? (
+                                    <Button variant="ghost" size="icon-sm" aria-label="Download receipt" nativeButton={false} render={<a href={`/api/payments/${p.id}/receipt?download=1`} />}>
+                                      <Download />
+                                    </Button>
+                                  ) : null}
+                                  {!creditHoldsReceipts && receiptsByPayment.get(p.id) && !receiptsByPayment.get(p.id)?.voidedAt && can(current, "receipts.send") ? (
+                                    <EmailReceiptButton
+                                      compact
+                                      paymentId={p.id}
+                                      receiptNumber={p.receiptNumber ?? ""}
+                                      clientEmail={client.email}
+                                      emailConfigured={isEmailConfigured()}
+                                      delivery={(() => {
+                                        const r = receiptsByPayment.get(p.id);
+                                        return r ? { sentCount: r.sentCount, lastSentTo: r.lastSentTo, lastSentAt: r.lastSentAt ? formatDateTime(r.lastSentAt) : null, failed: r.deliveryStatus === "failed" } : null;
+                                      })()}
+                                    />
                                   ) : null}
                                   {can(current, "payments.reverse") ? <ReversePaymentDialog compact paymentId={p.id} invoiceId={invoice.id} label={label} /> : null}
                                 </>

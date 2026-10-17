@@ -17,6 +17,7 @@ import {
   type PaymentStatus,
 } from "@/db/schema";
 import { notifyInvoiceEvent } from "@/lib/data/notifications";
+import { createReceiptSnapshot, voidReceipt } from "@/lib/data/receipts";
 import { db, type Database } from "@/lib/db";
 import { nextReceiptNumber } from "@/lib/document-number";
 import { todayIso } from "@/lib/fiscal-year";
@@ -380,6 +381,7 @@ export async function recordPayment(businessId: string, values: PaymentFormValue
     const extra = { amount: values.amount, methodLabel: PAYMENT_METHOD_LABELS[values.method], reference: values.reference ?? null, receiptNumber: receiptNumber ?? undefined };
     if (options.verified) {
       await applyPaymentTotals(tx, invoice.id);
+      await createReceiptSnapshot(tx, businessId, created.id);
       await notifyInvoiceEvent(businessId, invoice.id, "payment_received", extra, tx);
       await notifyIfPaid(tx, businessId, invoice.id);
     } else {
@@ -427,6 +429,8 @@ export async function verifyPayment(businessId: string, id: string, reviewerUser
       .set({ status: "verified", receiptNumber, reviewedByUserId: reviewerUserId, reviewedAt: now, rejectionReason: null, updatedAt: now })
       .where(eq(payments.id, id));
     await applyPaymentTotals(tx, payment.invoiceId);
+    // The receipt is frozen now, with the totals this verification produced.
+    await createReceiptSnapshot(tx, businessId, id);
     await notifyInvoiceEvent(
       businessId,
       payment.invoiceId,
@@ -473,6 +477,7 @@ export async function reversePayment(businessId: string, id: string, actorUserId
       .set({ status: "reversed", reversedByUserId: actorUserId, reversedAt: now, reversalReason: reason, updatedAt: now })
       .where(eq(payments.id, id));
     await applyPaymentTotals(tx, payment.invoiceId);
+    await voidReceipt(tx, businessId, id, reason);
     await notifyInvoiceEvent(
       businessId,
       payment.invoiceId,

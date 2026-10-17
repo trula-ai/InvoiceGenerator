@@ -78,6 +78,20 @@ export const businesses = pgTable("businesses", {
   /** Email the business's users a summary whenever reminders go out ("notify mail"). */
   notifyOwner: boolean().notNull().default(true),
 
+  // --- Client receipts -----------------------------------------------------
+  /**
+   * Payment terms printed on every receipt (non-refundability and similar).
+   * Legal-approved wording goes here; receipts freeze the text in force when
+   * they are issued, with `receiptTermsVersion` so later edits are traceable.
+   */
+  receiptTerms: text(),
+  /** Privacy policy link printed on receipts. */
+  receiptPrivacyUrl: varchar({ length: 300 }),
+  /** Incremented whenever the terms or privacy link change. */
+  receiptTermsVersion: integer().notNull().default(0),
+  /** Release receipts only after the sales credit is approved too (decision D-07); off means finance verification alone. */
+  receiptRequiresAttribution: boolean().notNull().default(false),
+
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 });

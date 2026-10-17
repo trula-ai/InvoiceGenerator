@@ -92,6 +92,13 @@
       "when": 1792228093085,
       "tag": "0012_phase_c_sales_attribution",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792230249171,
+      "tag": "0013_phase_d_receipts",
+      "breakpoints": true
     }
   ]
 }

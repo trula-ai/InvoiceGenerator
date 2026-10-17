@@ -19,9 +19,12 @@ interface EmailReceiptButtonProps {
   emailConfigured: boolean;
   /** Compact icon-only trigger for table rows. */
   compact?: boolean;
+  /** Delivery so far, from the receipt record; makes the dialog say "resend". */
+  delivery?: { sentCount: number; lastSentTo: string | null; lastSentAt: string | null; failed: boolean } | null;
 }
 
-export function EmailReceiptButton({ paymentId, receiptNumber, clientEmail, emailConfigured, compact }: EmailReceiptButtonProps) {
+export function EmailReceiptButton({ paymentId, receiptNumber, clientEmail, emailConfigured, compact, delivery = null }: EmailReceiptButtonProps) {
+  const resend = !!delivery && delivery.sentCount > 0;
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState(clientEmail ?? "");
   const [message, setMessage] = useState("");
@@ -47,15 +50,23 @@ export function EmailReceiptButton({ paymentId, receiptNumber, clientEmail, emai
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        render={compact ? <Button variant="ghost" size="icon-sm" aria-label={`Email receipt ${receiptNumber}`} /> : <Button variant="outline" size="sm" />}
+        render={compact ? <Button variant="ghost" size="icon-sm" aria-label={`${resend ? "Resend" : "Email"} receipt ${receiptNumber}`} /> : <Button variant="outline" size="sm" />}
       >
         <Mail />
-        {compact ? null : " Email receipt"}
+        {compact ? null : resend ? " Resend receipt" : " Email receipt"}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Email receipt {receiptNumber}</DialogTitle>
-          <DialogDescription>The receipt PDF is attached automatically.</DialogDescription>
+          <DialogTitle>
+            {resend ? "Resend" : "Email"} receipt {receiptNumber}
+          </DialogTitle>
+          <DialogDescription>
+            {resend
+              ? `Sent ${delivery.sentCount} time${delivery.sentCount === 1 ? "" : "s"}${delivery.lastSentTo ? ` to ${delivery.lastSentTo}` : ""}${delivery.lastSentAt ? ` (last ${delivery.lastSentAt})` : ""}. The same frozen PDF is attached again; no new receipt is created.`
+              : delivery?.failed
+                ? "The last attempt failed. The same frozen PDF is attached; sending again does not create a new receipt."
+                : "The receipt PDF is attached automatically."}
+          </DialogDescription>
         </DialogHeader>
         <FieldGroup className="my-4">
           <Field>

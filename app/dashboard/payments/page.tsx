@@ -131,6 +131,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/dashboa
                   <TableCell className="hidden text-right tabular-nums text-muted-foreground xl:table-cell">{formatCurrency(p.amountInr, BASE_CURRENCY)}</TableCell>
                   <TableCell>
                     {p.status === "verified" ? (
+                      // The route itself refuses receipts that are void or still held by the business's release rule.
                       <Button variant="ghost" size="icon-sm" aria-label="Download receipt" nativeButton={false} render={<a href={`/api/payments/${p.id}/receipt?download=1`} />}>
                         <Download />
                       </Button>

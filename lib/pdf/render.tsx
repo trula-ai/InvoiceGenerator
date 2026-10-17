@@ -1,7 +1,7 @@
 import { renderToBuffer } from "@react-pdf/renderer";
 
 import type { InvoiceDetail } from "@/lib/data/invoices";
-import type { PaymentDetail } from "@/lib/data/payments";
+import type { ReceiptRenderData } from "@/lib/data/receipts";
 
 import { InvoiceDocument } from "./invoice-document";
 import { ReceiptDocument } from "./receipt-document";
@@ -16,8 +16,8 @@ export async function renderInvoicePdf(detail: InvoiceDetail): Promise<Buffer> {
   return renderToBuffer(<InvoiceDocument detail={detail} />);
 }
 
-export async function renderReceiptPdf(detail: PaymentDetail): Promise<Buffer> {
-  return renderToBuffer(<ReceiptDocument detail={detail} />);
+export async function renderReceiptPdf(data: ReceiptRenderData): Promise<Buffer> {
+  return renderToBuffer(<ReceiptDocument data={data} />);
 }
 
 /** Safe file name for a document number like INV/2026-27/0001. */

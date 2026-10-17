@@ -68,6 +68,17 @@ export const businessSettingsSchema = z
     reminderOverdueEveryDays: z.coerce.number().int().min(0, "Use 0 to disable").max(90, "At most 90 days"),
     /** Email the business's own users a summary when reminders are sent. */
     notifyOwner: z.boolean().default(true),
+    /** Payment terms printed on client receipts; frozen per receipt with a version. */
+    receiptTerms: optionalText(4000),
+    receiptPrivacyUrl: z
+      .string()
+      .trim()
+      .max(300)
+      .optional()
+      .transform((v) => (v ? v : undefined))
+      .refine((v) => v === undefined || /^https?:\/\/\S+$/i.test(v), "Enter a full link starting with http:// or https://"),
+    /** Release receipts only once the sales credit is approved as well. */
+    receiptRequiresAttribution: z.boolean().default(false),
   })
   .refine((v) => !v.gstEnabled || !!v.gstin, { message: "GSTIN is required when GST is enabled", path: ["gstin"] })
   .refine((v) => !v.gstEnabled || !!v.stateCode, {

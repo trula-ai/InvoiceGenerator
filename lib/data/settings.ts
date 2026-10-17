@@ -5,6 +5,13 @@ import { db } from "@/lib/db";
 import type { BusinessSettingsValues } from "@/lib/validation/settings";
 
 export async function updateBusinessSettings(businessId: string, values: BusinessSettingsValues): Promise<Business> {
+  // Receipts freeze the terms they were issued with; bump the version whenever the wording changes.
+  const [before] = await db
+    .select({ receiptTerms: businesses.receiptTerms, receiptPrivacyUrl: businesses.receiptPrivacyUrl, receiptTermsVersion: businesses.receiptTermsVersion })
+    .from(businesses)
+    .where(eq(businesses.id, businessId))
+    .limit(1);
+  const termsChanged = !!before && ((before.receiptTerms ?? null) !== (values.receiptTerms ?? null) || (before.receiptPrivacyUrl ?? null) !== (values.receiptPrivacyUrl ?? null));
   const [row] = await db
     .update(businesses)
     .set({
@@ -42,6 +49,10 @@ export async function updateBusinessSettings(businessId: string, values: Busines
       reminderSchedule: values.reminderSchedule,
       reminderOverdueEveryDays: values.reminderOverdueEveryDays,
       notifyOwner: values.notifyOwner,
+      receiptTerms: values.receiptTerms ?? null,
+      receiptPrivacyUrl: values.receiptPrivacyUrl ?? null,
+      receiptTermsVersion: termsChanged ? (before?.receiptTermsVersion ?? 0) + 1 : (before?.receiptTermsVersion ?? 0),
+      receiptRequiresAttribution: values.receiptRequiresAttribution,
       updatedAt: new Date(),
     })
     .where(eq(businesses.id, businessId))

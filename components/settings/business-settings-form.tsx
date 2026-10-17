@@ -23,7 +23,7 @@ import { currentFinancialYear } from "@/lib/fiscal-year";
 import { describeReminderSchedule } from "@/lib/reminder-schedule";
 import { businessSettingsSchema, type BusinessSettingsInput, type BusinessSettingsValues } from "@/lib/validation/settings";
 
-type SectionId = "profile" | "address" | "tax" | "invoice" | "reminders";
+type SectionId = "profile" | "address" | "tax" | "invoice" | "receipts" | "reminders";
 
 /** Which form fields belong to which section, used to open a section that has errors. */
 const SECTION_FIELDS: Record<SectionId, (keyof BusinessSettingsInput)[]> = {
@@ -44,6 +44,7 @@ const SECTION_FIELDS: Record<SectionId, (keyof BusinessSettingsInput)[]> = {
     "invoiceNotes",
     "invoiceTerms",
   ],
+  receipts: ["receiptTerms", "receiptPrivacyUrl", "receiptRequiresAttribution"],
   reminders: ["onlinePaymentsEnabled", "autoEmailInvoices", "remindersEnabled", "reminderSchedule", "reminderOverdueEveryDays", "notifyOwner"],
 };
 
@@ -110,6 +111,9 @@ export function BusinessSettingsForm({ business, razorpayConfigured = false }: {
       reminderSchedule: business.reminderSchedule,
       reminderOverdueEveryDays: business.reminderOverdueEveryDays,
       notifyOwner: business.notifyOwner,
+      receiptTerms: business.receiptTerms ?? "",
+      receiptPrivacyUrl: business.receiptPrivacyUrl ?? "",
+      receiptRequiresAttribution: business.receiptRequiresAttribution,
     },
   });
   const { errors, isSubmitting } = form.formState;
@@ -394,6 +398,45 @@ export function BusinessSettingsForm({ business, razorpayConfigured = false }: {
               <FieldLabel htmlFor="invoiceTerms">Default terms</FieldLabel>
               <Textarea id="invoiceTerms" rows={3} {...form.register("invoiceTerms")} />
             </Field>
+          </FieldGroup>
+        </Section>
+
+        <Section
+          id="receipts"
+          icon={Receipt}
+          title="Client receipts"
+          description="What clients see on the payment receipt issued for every verified payment, and when it is released."
+          summary={business.receiptTerms ? `Terms v${business.receiptTermsVersion}` : "No terms yet"}
+          open={openSection === "receipts"}
+          hasError={sectionWithErrors(errors) === "receipts"}
+          onToggle={toggle}
+        >
+          <FieldGroup>
+            <Field data-invalid={!!errors.receiptTerms}>
+              <FieldLabel htmlFor="receiptTerms">Payment terms on receipts</FieldLabel>
+              <Textarea id="receiptTerms" rows={4} placeholder="e.g. the non-refundability wording approved by your legal team" {...form.register("receiptTerms")} />
+              <FieldDescription>
+                Printed on every receipt and included in receipt emails. Each receipt keeps the wording in force when it was issued (currently version{" "}
+                {business.receiptTermsVersion}); saving a change starts a new version. Use wording your legal team has approved.
+              </FieldDescription>
+              <FieldError errors={[errors.receiptTerms]} />
+            </Field>
+            <Field data-invalid={!!errors.receiptPrivacyUrl}>
+              <FieldLabel htmlFor="receiptPrivacyUrl">Privacy policy link</FieldLabel>
+              <Input id="receiptPrivacyUrl" type="url" placeholder="https://example.com/privacy" {...form.register("receiptPrivacyUrl")} />
+              <FieldError errors={[errors.receiptPrivacyUrl]} />
+            </Field>
+            <Field orientation="horizontal">
+              <Controller
+                control={form.control}
+                name="receiptRequiresAttribution"
+                render={({ field }) => <Switch id="receiptRequiresAttribution" checked={field.value ?? false} onCheckedChange={(checked) => field.onChange(checked)} />}
+              />
+              <FieldLabel htmlFor="receiptRequiresAttribution">Release receipts only after the sales credit is approved too</FieldLabel>
+            </Field>
+            <FieldDescription className="-mt-3">
+              Receipts always wait for finance verification. Turn this on to also hold them until a sales manager approves who is credited with the sale.
+            </FieldDescription>
           </FieldGroup>
         </Section>
 
