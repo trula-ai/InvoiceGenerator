@@ -104,7 +104,7 @@ export function InvoicesTable({ invoices, hasFilters, kind = "invoice" }: Invoic
                 </TableCell>
               ) : null}
               <TableCell>
-                <StatusBadge status={inv.status} kind={kind} />
+                <StatusBadge status={inv.status} overdue={inv.isOverdue} kind={kind} />
               </TableCell>
             </TableRow>
           ))}

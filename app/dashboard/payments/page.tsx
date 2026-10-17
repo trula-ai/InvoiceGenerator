@@ -10,14 +10,22 @@ import { SelectField } from "@/components/shared/select-field";
 import { SearchSuggestInput } from "@/components/shared/search-suggest";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/shared/page-header";
-import type { PaymentMethod } from "@/db/schema";
+import type { PaymentMethod, PaymentStatus } from "@/db/schema";
+import { PaymentStatusBadge } from "@/components/payments/payment-status-badge";
 import { requireUser } from "@/lib/auth/current-user";
 import { exportHref } from "@/lib/csv";
 import { BASE_CURRENCY } from "@/lib/currency";
 import { listPayments } from "@/lib/data/payments";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { D, toMoney } from "@/lib/money";
-import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS } from "@/lib/validation/payment";
+import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS, PAYMENT_STATUSES } from "@/lib/validation/payment";
+
+const STATUS_OPTIONS = [
+  { value: "pending", label: "Pending verification" },
+  { value: "verified", label: "Verified" },
+  { value: "rejected", label: "Rejected" },
+  { value: "reversed", label: "Reversed" },
+];
 
 export const metadata: Metadata = { title: "Payments" };
 
@@ -31,25 +39,32 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/dashboa
   const q = str(params.q);
   const methodParam = str(params.method);
   const method = PAYMENT_METHODS.includes(methodParam as PaymentMethod) ? (methodParam as PaymentMethod) : undefined;
+  const statusParam = str(params.status);
+  const status = PAYMENT_STATUSES.includes(statusParam as PaymentStatus) ? (statusParam as PaymentStatus) : undefined;
   const from = str(params.from);
   const to = str(params.to);
-  const hasFilters = !!(q || method || from || to);
+  const hasFilters = !!(q || method || status || from || to);
 
-  const payments = await listPayments(business.id, { q, method, from, to });
-  const totalInr = toMoney(payments.reduce((acc, p) => acc.plus(D(p.amountInr)), D(0)));
-  const csvHref = exportHref("/api/export/payments", { q, method, from, to });
+  const payments = await listPayments(business.id, { q, method, status, from, to });
+  const verifiedCount = payments.filter((p) => p.status === "verified").length;
+  const totalInr = toMoney(payments.filter((p) => p.status === "verified").reduce((acc, p) => acc.plus(D(p.amountInr)), D(0)));
+  const csvHref = exportHref("/api/export/payments", { q, method, status, from, to });
 
   return (
     <>
-      <PageHeader title="Payments" description={`${payments.length} payment${payments.length === 1 ? "" : "s"} · ${formatCurrency(totalInr, BASE_CURRENCY)} received${hasFilters ? " (filtered)" : ""}.`}>
+      <PageHeader
+        title="Payments"
+        description={`${payments.length} payment${payments.length === 1 ? "" : "s"} · ${formatCurrency(totalInr, BASE_CURRENCY)} verified${verifiedCount !== payments.length ? ` across ${verifiedCount} verified payment${verifiedCount === 1 ? "" : "s"}` : ""}${hasFilters ? " (filtered)" : ""}.`}
+      >
         <Button variant="outline" nativeButton={false} render={<a href={csvHref} />}>
           <Download /> Export CSV
         </Button>
       </PageHeader>
 
-      <form method="get" className="grid gap-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10 sm:grid-cols-2 xl:grid-cols-[minmax(14rem,1fr)_170px_150px_150px_auto]">
+      <form method="get" className="grid gap-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10 sm:grid-cols-2 xl:grid-cols-[minmax(14rem,1fr)_170px_180px_150px_150px_auto]">
         <SearchSuggestInput kind="payment" defaultValue={q} placeholder="Receipt, invoice, client or reference" />
         <SelectField name="method" defaultValue={method ?? ""} options={withAll("All methods", PAYMENT_METHOD_OPTIONS)} />
+        <SelectField name="status" defaultValue={status ?? ""} options={withAll("All statuses", STATUS_OPTIONS)} />
         <DatePicker name="from" defaultValue={from} placeholder="From" allowClear />
         <DatePicker name="to" defaultValue={to} placeholder="To" allowClear />
         <div className="flex gap-2">
@@ -80,6 +95,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/dashboa
             <TableHeader>
               <TableRow>
                 <TableHead>Receipt</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead className="hidden sm:table-cell">Client</TableHead>
                 <TableHead className="hidden md:table-cell">Invoice</TableHead>
@@ -93,8 +109,11 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/dashboa
               {payments.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell className="font-medium">
-                    {p.receiptNumber}
+                    {p.receiptNumber ?? <span className="text-muted-foreground">No receipt yet</span>}
                     {p.reference ? <span className="block text-xs font-normal text-muted-foreground">{p.reference}</span> : null}
+                  </TableCell>
+                  <TableCell>
+                    <PaymentStatusBadge status={p.status} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(p.paymentDate)}</TableCell>
                   <TableCell className="hidden sm:table-cell">
@@ -111,9 +130,11 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/dashboa
                   <TableCell className="text-right font-medium tabular-nums">{formatCurrency(p.amount, p.invoiceCurrency)}</TableCell>
                   <TableCell className="hidden text-right tabular-nums text-muted-foreground xl:table-cell">{formatCurrency(p.amountInr, BASE_CURRENCY)}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon-sm" aria-label="Download receipt" nativeButton={false} render={<a href={`/api/payments/${p.id}/receipt?download=1`} />}>
-                      <Download />
-                    </Button>
+                    {p.status === "verified" ? (
+                      <Button variant="ghost" size="icon-sm" aria-label="Download receipt" nativeButton={false} render={<a href={`/api/payments/${p.id}/receipt?download=1`} />}>
+                        <Download />
+                      </Button>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))}

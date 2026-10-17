@@ -149,7 +149,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
                           {inv.documentKind === "invoice" ? formatCurrency(inv.balanceDue, inv.currency) : <span className="text-muted-foreground">—</span>}
                         </TableCell>
                         <TableCell>
-                          <StatusBadge status={inv.status} kind={inv.documentKind} />
+                          <StatusBadge status={inv.status} overdue={inv.isOverdue} kind={inv.documentKind} />
                         </TableCell>
                         <TableCell className="text-right">
                           {payable ? (
@@ -159,7 +159,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/dashboard
                               invoiceId={inv.id}
                               clientEmail={client.email}
                               emailConfigured={emailConfigured}
-                              overdue={inv.status === "overdue"}
+                              overdue={inv.isOverdue}
                             />
                           ) : null}
                         </TableCell>

@@ -44,7 +44,7 @@ export const PERMISSIONS = [
   // Payments and receipts
   "payments.view",
   "payments.record",
-  "payments.delete",
+  "payments.reverse",
   "payments.verify",
   "receipts.send",
   // Sale attribution (used from the attribution phase onward)
@@ -88,7 +88,7 @@ const FINANCE_MANAGER: Permission[] = [
   "invoices.send",
   "payments.view",
   "payments.record",
-  "payments.delete",
+  "payments.reverse",
   "payments.verify",
   "receipts.send",
   "incentives.view",
@@ -137,7 +137,7 @@ export function permissionDeniedMessage(permission: Permission): string {
     "invoices.edit": "change documents",
     "invoices.send": "send emails",
     "payments.record": "record payments",
-    "payments.delete": "delete payments",
+    "payments.reverse": "reverse payments",
     "payments.verify": "verify payments",
     "receipts.send": "send receipts",
     "attribution.assign": "assign sale credit",

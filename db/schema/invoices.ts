@@ -34,9 +34,11 @@ import { items } from "./items";
  *   credit_note: draft -> pending (issued) -> cancelled
  *                Issuing applies the total to `sourceDocumentId`'s balance.
  *
- * `overdue` is persisted (not just derived) so it can be filtered and counted in
- * SQL. `lib/data/invoices.ts#syncOverdueStatuses` promotes past-due invoices
- * and `applyPaymentTotals` recomputes after each payment or credit.
+ * Overdue is not a status: `isOverdue` is a separate flag (an invoice can be
+ * "partially paid" and overdue at once). It is persisted so it can be filtered
+ * and counted in SQL; `lib/data/invoices.ts#syncOverdueStatuses` refreshes it
+ * daily and `applyPaymentTotals` recomputes it after each payment or credit.
+ * The `overdue` enum value is kept only for historical rows; nothing writes it.
  */
 export const documentKindEnum = pgEnum("document_kind", ["invoice", "quote", "credit_note"]);
 
@@ -137,6 +139,8 @@ export const invoices = pgTable(
     creditAmount: money().notNull().default("0"),
     /** total - amountPaid - creditAmount, never below zero. */
     balanceDue: money().notNull(),
+    /** True while an unpaid balance remains past the due date. Derived; kept in sync by the data layer. */
+    isOverdue: boolean().notNull().default(false),
 
     // --- INR equivalents (frozen at creation) -------------------------------
     totalInr: money().notNull(),

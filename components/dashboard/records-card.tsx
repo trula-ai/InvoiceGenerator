@@ -133,7 +133,7 @@ export function RecordsCard({ records, className }: RecordsCardProps) {
                           {formatCurrency(invoice.amount, invoice.currency)}
                         </TableCell>
                         <TableCell>
-                          <StatusBadge status={invoice.status} />
+                          <StatusBadge status={invoice.status} overdue={invoice.isOverdue} />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -164,7 +164,7 @@ export function RecordsCard({ records, className }: RecordsCardProps) {
                     {payments.map((payment) => (
                       <TableRow key={payment.id}>
                         <TableCell className="font-medium">
-                          {payment.receiptNumber}
+                          {payment.receiptNumber ?? "Pending"}
                           <span className="block text-xs font-normal text-muted-foreground sm:hidden">{payment.client}</span>
                         </TableCell>
                         <TableCell className="hidden sm:table-cell">{payment.client}</TableCell>

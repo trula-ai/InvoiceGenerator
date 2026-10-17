@@ -60,10 +60,12 @@ interface InvoiceActionsProps {
   publicToken: string;
   /** Installment plan state for invoices: whether one exists and what is due next. */
   installments?: { hasPlan: boolean; next: { sequence: number; count: number; outstanding: string } | null };
+  /** Unpaid balance past the due date; words the reminder button more firmly. */
+  isOverdue?: boolean;
 }
 
 export function InvoiceActions(props: InvoiceActionsProps) {
-  const { kind = "invoice", invoiceId, status, currency, balanceDue, hasPayments, editable, converted = false, clientEmail, publicToken, installments } = props;
+  const { kind = "invoice", invoiceId, status, currency, balanceDue, hasPayments, editable, converted = false, clientEmail, publicToken, installments, isOverdue = false } = props;
   const nextInstallment = installments?.next ? { amount: installments.next.outstanding, label: `Installment ${installments.next.sequence} of ${installments.next.count}` } : null;
   const [pending, startTransition] = useTransition();
   const label = documentLabel(kind);
@@ -114,7 +116,7 @@ export function InvoiceActions(props: InvoiceActionsProps) {
       ) : null}
 
       {payable ? (
-        <EmailDialog kind="reminder" invoiceId={invoiceId} clientEmail={clientEmail} emailConfigured={props.emailConfigured} overdue={status === "overdue"} />
+        <EmailDialog kind="reminder" invoiceId={invoiceId} clientEmail={clientEmail} emailConfigured={props.emailConfigured} overdue={isOverdue || status === "overdue"} />
       ) : null}
 
       {payable ? <RecordPaymentDialog invoiceId={invoiceId} currency={currency} balanceDue={balanceDue} suggested={nextInstallment} /> : null}

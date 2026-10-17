@@ -100,6 +100,7 @@ export async function settleRazorpayPayment(payment: RazorpayPayment): Promise<{
   if (!inv) return null;
   const capped = D(amount).greaterThan(D(inv.balanceDue)) ? inv.balanceDue : amount;
 
+  // Gateway payments are verified on arrival: Razorpay's captured payment id is the evidence.
   const result = await recordGatewayPayment(order.businessId, {
     invoiceId: order.invoiceId,
     amount: capped,

@@ -56,7 +56,7 @@ export function RecentInvoices({ invoices, className }: RecentInvoicesProps) {
                     {formatCurrency(invoice.amount, invoice.currency)}
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={invoice.status} />
+                    <StatusBadge status={invoice.status} overdue={invoice.isOverdue} />
                   </TableCell>
                 </TableRow>
               ))}

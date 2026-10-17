@@ -64,6 +64,10 @@ const SEVERITY_BY_KIND: Record<NotificationKind, NotificationSeverity> = {
   invoice_issued: "info",
   invoice_sent: "info",
   payment_received: "success",
+  payment_pending: "info",
+  payment_verified: "success",
+  payment_rejected: "warning",
+  payment_reversed: "warning",
   invoice_paid: "success",
   invoice_due_soon: "warning",
   invoice_due_today: "urgent",
@@ -143,7 +147,7 @@ export interface InvoiceEventExtra {
   methodLabel?: string;
   reference?: string | null;
   receiptNumber?: string;
-  /** Provider error for reminder_failed. */
+  /** Provider error for reminder_failed; rejection or reversal reason for payment_rejected / payment_reversed. */
   error?: string;
 }
 
@@ -218,6 +222,35 @@ export function describeInvoiceEvent(kind: InvoiceEventKind, inv: InvoiceSnapsho
         amount: extra.amount ?? null,
         title: `Payment received for ${inv.invoiceNumber}`,
         body: `${inv.clientName} paid ${money(extra.amount ?? "0")}${extra.methodLabel ? ` via ${extra.methodLabel.toLowerCase()}` : ""}${extra.reference ? ` (ref ${extra.reference})` : ""}.${extra.receiptNumber ? ` Receipt ${extra.receiptNumber}.` : ""} Remaining balance ${money(inv.balanceDue)}.`,
+      };
+    case "payment_pending":
+      return {
+        ...base,
+        amount: extra.amount ?? null,
+        title: `Payment of ${money(extra.amount ?? "0")} recorded for ${inv.invoiceNumber}`,
+        body: `${inv.clientName}'s payment${extra.methodLabel ? ` by ${extra.methodLabel.toLowerCase()}` : ""}${extra.reference ? ` (ref ${extra.reference})` : ""} is waiting for finance verification. The balance stays ${money(inv.balanceDue)} until it is verified.`,
+        href: "/dashboard/payments/verification",
+      };
+    case "payment_verified":
+      return {
+        ...base,
+        amount: extra.amount ?? null,
+        title: `Payment verified for ${inv.invoiceNumber}`,
+        body: `${money(extra.amount ?? "0")} from ${inv.clientName} was verified${extra.receiptNumber ? ` and receipt ${extra.receiptNumber} issued` : ""}. Remaining balance ${money(inv.balanceDue)}.`,
+      };
+    case "payment_rejected":
+      return {
+        ...base,
+        amount: extra.amount ?? null,
+        title: `Payment rejected for ${inv.invoiceNumber}`,
+        body: `The ${money(extra.amount ?? "0")} payment from ${inv.clientName}${extra.reference ? ` (ref ${extra.reference})` : ""} was not verified: ${extra.error ?? "no reason given"}. The balance is still ${money(inv.balanceDue)}.`,
+      };
+    case "payment_reversed":
+      return {
+        ...base,
+        amount: extra.amount ?? null,
+        title: `Payment reversed for ${inv.invoiceNumber}`,
+        body: `${money(extra.amount ?? "0")} from ${inv.clientName}${extra.receiptNumber ? ` (receipt ${extra.receiptNumber})` : ""} was reversed: ${extra.error ?? "no reason given"}. The balance is now ${money(inv.balanceDue)}.`,
       };
     case "invoice_paid":
       return {

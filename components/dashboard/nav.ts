@@ -1,4 +1,5 @@
 import {
+  BadgeCheck,
   Bell,
   CalendarClock,
   ChartColumn,
@@ -38,7 +39,8 @@ export const dashboardNav: NavItem[] = [
   { title: "Credit notes", href: "/dashboard/credit-notes", icon: FileMinus, permission: "invoices.view" },
   { title: "Scheduled", href: "/dashboard/scheduled", icon: CalendarClock, permission: "invoices.view" },
   { title: "Recurring", href: "/dashboard/recurring", icon: Repeat, permission: "invoices.view" },
-  { title: "Payments", href: "/dashboard/payments", icon: CreditCard, permission: "payments.view" },
+  { title: "Payments", href: "/dashboard/payments", icon: CreditCard, permission: "payments.view", exact: true },
+  { title: "Verification", href: "/dashboard/payments/verification", icon: BadgeCheck, permission: "payments.verify" },
   { title: "History", href: "/dashboard/history", icon: History, permission: "payments.view" },
   { title: "Records", href: "/dashboard/records", icon: ClipboardList, permission: "invoices.view" },
   { title: "Reports", href: "/dashboard/reports", icon: ChartColumn, permission: "reports.view" },

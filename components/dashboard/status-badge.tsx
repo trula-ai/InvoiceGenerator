@@ -19,16 +19,26 @@ const dots: Record<InvoiceStatus, string> = {
 
 interface StatusBadgeProps {
   status: InvoiceStatus;
+  /**
+   * Unpaid balance past the due date. Overdue is shown beside the payment
+   * status ("Partially paid · Overdue"), never instead of it.
+   */
+  overdue?: boolean;
   /** Words the label for the document kind ("Open" instead of "Pending" on a quote). */
   kind?: DocumentKind;
   className?: string;
 }
 
-export function StatusBadge({ status, kind = "invoice", className }: StatusBadgeProps) {
+export function StatusBadge({ status, overdue = false, kind = "invoice", className }: StatusBadgeProps) {
+  const showOverdue = overdue && (status === "pending" || status === "partially_paid" || status === "overdue");
   return (
-    <Badge variant="outline" className={cn("gap-1.5 font-medium", status === "cancelled" && "text-muted-foreground line-through", className)}>
-      <span className={cn("size-1.5 rounded-full", dots[status])} aria-hidden />
-      {statusLabel(status, kind)}
+    <Badge
+      variant="outline"
+      className={cn("gap-1.5 font-medium", status === "cancelled" && "text-muted-foreground line-through", showOverdue && "border-destructive/40 text-destructive", className)}
+    >
+      <span className={cn("size-1.5 rounded-full", showOverdue ? "bg-destructive" : dots[status])} aria-hidden />
+      {status === "overdue" ? "Pending" : statusLabel(status, kind)}
+      {showOverdue ? <span className="font-normal opacity-80">· Overdue</span> : null}
     </Badge>
   );
 }

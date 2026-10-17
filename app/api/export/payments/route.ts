@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 
-import type { PaymentMethod } from "@/db/schema";
+import type { PaymentMethod, PaymentStatus } from "@/db/schema";
 import { can, getCurrentUser } from "@/lib/auth/current-user";
 import { csvResponse, toCsv } from "@/lib/csv";
 import { listPayments } from "@/lib/data/payments";
 import { todayIso } from "@/lib/fiscal-year";
-import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS } from "@/lib/validation/payment";
+import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS, PAYMENT_STATUSES } from "@/lib/validation/payment";
 
 const HEADERS = [
   "Receipt number",
+  "Status",
   "Payment date",
   "Client",
   "Invoice number",
@@ -18,6 +19,10 @@ const HEADERS = [
   "Amount (INR)",
   "Reference",
   "Notes",
+  "Receiving account",
+  "Recorded by",
+  "Reviewed by",
+  "Rejection / reversal reason",
 ];
 
 function str(v: string | null): string | undefined {
@@ -34,12 +39,15 @@ export async function GET(request: Request) {
   const q = str(params.get("q"));
   const methodParam = str(params.get("method"));
   const method = PAYMENT_METHODS.includes(methodParam as PaymentMethod) ? (methodParam as PaymentMethod) : undefined;
+  const statusParam = str(params.get("status"));
+  const status = PAYMENT_STATUSES.includes(statusParam as PaymentStatus) ? (statusParam as PaymentStatus) : undefined;
   const from = str(params.get("from"));
   const to = str(params.get("to"));
 
-  const payments = await listPayments(current.business.id, { q, method, from, to });
+  const payments = await listPayments(current.business.id, { q, method, status, from, to });
   const rows = payments.map((p) => [
     p.receiptNumber,
+    p.status,
     p.paymentDate,
     p.clientName,
     p.invoiceNumber,
@@ -49,6 +57,10 @@ export async function GET(request: Request) {
     p.amountInr,
     p.reference,
     p.notes,
+    p.receivingAccount,
+    p.recordedByName,
+    p.reviewedByName,
+    p.rejectionReason ?? p.reversalReason,
   ]);
 
   return csvResponse(`payments-${todayIso()}.csv`, toCsv(HEADERS, rows));

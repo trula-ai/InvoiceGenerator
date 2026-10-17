@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 
-import { clients, invoices, payments, type DocumentKind, type InvoiceStatus } from "@/db/schema";
+import { clients, invoices, payments, type DocumentKind, type InvoiceStatus, type PaymentStatus } from "@/db/schema";
 import { db } from "@/lib/db";
 import { documentPath } from "@/lib/documents";
 
@@ -30,8 +30,10 @@ export interface InvoiceSearchResult {
 
 export interface PaymentSearchResult {
   id: string;
+  /** "Pending" until the payment is verified. */
   receiptNumber: string;
   reference: string | null;
+  status: PaymentStatus;
   invoiceId: string;
   invoiceNumber: string;
   clientName: string;
@@ -104,8 +106,9 @@ export async function searchPayments(businessId: string, q: string, limit = 8): 
   return db
     .select({
       id: payments.id,
-      receiptNumber: payments.receiptNumber,
+      receiptNumber: sql<string>`coalesce(${payments.receiptNumber}, 'Pending')`,
       reference: payments.reference,
+      status: payments.status,
       invoiceId: invoices.id,
       invoiceNumber: invoices.invoiceNumber,
       clientName: clients.name,

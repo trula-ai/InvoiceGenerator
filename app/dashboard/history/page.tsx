@@ -11,6 +11,7 @@ import { SelectField } from "@/components/shared/select-field";
 import { SearchSuggestInput } from "@/components/shared/search-suggest";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { PaymentStatusBadge } from "@/components/payments/payment-status-badge";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireUser } from "@/lib/auth/current-user";
 import { exportHref } from "@/lib/csv";
@@ -123,7 +124,8 @@ export default async function HistoryPage({ searchParams }: PageProps<"/dashboar
                     </Link>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
-                    {e.kind === "invoice" && e.status ? <StatusBadge status={e.status} /> : null}
+                    {e.kind === "invoice" && e.status ? <StatusBadge status={e.status} overdue={e.isOverdue} /> : null}
+                    {e.kind === "payment" && e.paymentStatus && e.paymentStatus !== "verified" ? <PaymentStatusBadge status={e.paymentStatus} className="mr-2" /> : null}
                     {e.kind === "payment" && e.method ? (
                       <span className="text-sm text-muted-foreground">{PAYMENT_METHOD_LABELS[e.method as keyof typeof PAYMENT_METHOD_LABELS] ?? e.method}</span>
                     ) : null}

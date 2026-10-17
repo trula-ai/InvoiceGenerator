@@ -10,18 +10,21 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { InstallmentScheduleTable } from "@/components/installments/installment-schedule-table";
 import { RemovePlanButton } from "@/components/installments/remove-plan-button";
 import { InvoiceActions } from "@/components/invoices/invoice-actions";
-import { DeletePaymentButton } from "@/components/payments/delete-payment-button";
 import { EmailReceiptButton } from "@/components/payments/email-receipt-button";
+import { EvidenceList } from "@/components/payments/evidence-list";
+import { AddEvidenceButton, RejectPaymentDialog, ReversePaymentDialog, VerifyPaymentButton, WithdrawPaymentButton } from "@/components/payments/payment-review-actions";
+import { PaymentStatusBadge } from "@/components/payments/payment-status-badge";
 import type { DocumentKind } from "@/db/schema";
 import { can, requireUser } from "@/lib/auth/current-user";
 import { amountInWords } from "@/lib/amount-in-words";
 import { BASE_CURRENCY } from "@/lib/currency";
 import { getInvoiceDetail, isInvoiceEditable, type RelatedDocument } from "@/lib/data/invoices";
+import { mapPaymentEvidence } from "@/lib/data/payments";
 import { documentLabel, documentPath, secondDateLabel } from "@/lib/documents";
 import { isEmailConfigured } from "@/lib/email/provider";
 import { formatCurrency, formatDate, formatDateTime, formatRate } from "@/lib/format";
 import { installmentOutstanding, nextUnpaidInstallment } from "@/lib/installments";
-import { D, isZero } from "@/lib/money";
+import { D, isZero, toMoney } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validation/payment";
 
 /** Shared detail page for invoices, quotes and credit notes. */
@@ -34,6 +37,10 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
 
   const { invoice, client, items, payments, installments, emails, source, convertedTo, creditNotes } = detail;
   const cur = invoice.currency;
+  const verifiedPayments = payments.filter((p) => p.status === "verified");
+  const pendingPayments = payments.filter((p) => p.status === "pending");
+  const pendingTotal = toMoney(pendingPayments.reduce((acc, p) => acc.plus(D(p.amount)), D(0)));
+  const evidenceByPayment = kind === "invoice" ? await mapPaymentEvidence(business.id, payments.map((p) => p.id)) : new Map();
   const showGst = invoice.gstApplied;
   const isInvoice = kind === "invoice";
   const hasPlan = installments.length > 0;
@@ -50,7 +57,7 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">{invoice.invoiceNumber}</h1>
-              <StatusBadge status={invoice.status} kind={kind} />
+              <StatusBadge status={invoice.status} overdue={invoice.isOverdue} kind={kind} />
               <Badge variant="secondary" className="uppercase">
                 {invoice.invoiceType}
               </Badge>
@@ -75,7 +82,8 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
             status={invoice.status}
             currency={cur}
             balanceDue={invoice.balanceDue}
-            hasPayments={payments.length > 0}
+            hasPayments={verifiedPayments.length > 0}
+            isOverdue={invoice.isOverdue}
             editable={isInvoiceEditable(invoice)}
             converted={!!invoice.convertedToId}
             clientEmail={client.email}
@@ -169,11 +177,12 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
             <Meta label={kind === "credit_note" ? "Credit total" : "Total"} value={formatCurrency(invoice.total, cur)} />
             {isInvoice ? (
               <>
-                <Meta label="Paid" value={formatCurrency(invoice.amountPaid, cur)} />
+                <Meta label="Verified payments" value={formatCurrency(invoice.amountPaid, cur)} />
+                {pendingPayments.length ? <Meta label="Awaiting verification" value={formatCurrency(pendingTotal, cur)} muted /> : null}
                 {!isZero(invoice.creditAmount) ? <Meta label="Credit notes" value={`- ${formatCurrency(invoice.creditAmount, cur)}`} /> : null}
                 <div className="flex items-center justify-between border-t pt-2 text-base font-semibold">
                   <span>Balance due</span>
-                  <span className={!isZero(invoice.balanceDue) && invoice.status === "overdue" ? "text-destructive" : ""}>{formatCurrency(invoice.balanceDue, cur)}</span>
+                  <span className={!isZero(invoice.balanceDue) && invoice.isOverdue ? "text-destructive" : ""}>{formatCurrency(invoice.balanceDue, cur)}</span>
                 </div>
               </>
             ) : null}
@@ -289,48 +298,86 @@ export async function DocumentDetailPage({ kind, id }: { kind: DocumentKind; id:
           <Card>
             <CardHeader>
               <CardTitle>Payments</CardTitle>
-              <CardDescription>{payments.length === 0 ? "No payments recorded yet." : `${payments.length} payment${payments.length === 1 ? "" : "s"} received.`}</CardDescription>
+              <CardDescription>
+                {payments.length === 0
+                  ? "No payments recorded yet."
+                  : `${verifiedPayments.length} verified${pendingPayments.length ? `, ${pendingPayments.length} awaiting verification` : ""}${
+                      payments.length - verifiedPayments.length - pendingPayments.length ? `, ${payments.length - verifiedPayments.length - pendingPayments.length} rejected or reversed` : ""
+                    }.`}
+              </CardDescription>
             </CardHeader>
             {payments.length > 0 ? (
               <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Receipt</TableHead>
+                      <TableHead>Payment</TableHead>
                       <TableHead>Date</TableHead>
-                      <TableHead className="hidden sm:table-cell">Method</TableHead>
+                      <TableHead className="hidden sm:table-cell">Status</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
-                      <TableHead className="w-28 text-right">
+                      <TableHead className="w-36 text-right">
                         <span className="sr-only">Actions</span>
                       </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {payments.map((p) => (
-                      <TableRow key={p.id}>
-                        <TableCell className="font-medium">
-                          {p.receiptNumber}
-                          {p.provider !== "manual" ? (
-                            <Badge variant="secondary" className="ml-2 h-4 px-1.5 text-[10px] capitalize">
-                              {p.provider}
-                            </Badge>
-                          ) : null}
-                          {p.reference ? <span className="block text-xs font-normal text-muted-foreground">{p.reference}</span> : null}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{formatDate(p.paymentDate)}</TableCell>
-                        <TableCell className="hidden sm:table-cell">{PAYMENT_METHOD_LABELS[p.method]}</TableCell>
-                        <TableCell className="text-right font-medium tabular-nums">{formatCurrency(p.amount, cur)}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon-sm" aria-label="Download receipt" nativeButton={false} render={<a href={`/api/payments/${p.id}/receipt?download=1`} />}>
-                              <Download />
-                            </Button>
-                            <EmailReceiptButton compact paymentId={p.id} receiptNumber={p.receiptNumber} clientEmail={client.email} emailConfigured={isEmailConfigured()} />
-                            {can(current, "payments.delete") ? <DeletePaymentButton paymentId={p.id} invoiceId={invoice.id} receiptNumber={p.receiptNumber} /> : null}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {payments.map((p) => {
+                      const label = `${formatCurrency(p.amount, cur)} from ${client.name}`;
+                      const reason = p.status === "rejected" ? p.rejectionReason : p.status === "reversed" ? p.reversalReason : null;
+                      return (
+                        <TableRow key={p.id} className={p.status === "rejected" || p.status === "reversed" ? "opacity-70" : undefined}>
+                          <TableCell className="font-medium">
+                            {p.receiptNumber ?? <span className="text-muted-foreground">No receipt yet</span>}
+                            {p.provider !== "manual" ? (
+                              <Badge variant="secondary" className="ml-2 h-4 px-1.5 text-[10px] capitalize">
+                                {p.provider}
+                              </Badge>
+                            ) : null}
+                            <span className="block text-xs font-normal text-muted-foreground">
+                              {PAYMENT_METHOD_LABELS[p.method]}
+                              {p.reference ? ` · ${p.reference}` : ""}
+                              {p.receivingAccount ? ` · into ${p.receivingAccount}` : ""}
+                            </span>
+                            {reason ? <span className="block text-xs font-normal text-destructive">{p.status === "rejected" ? "Rejected" : "Reversed"}: {reason}</span> : null}
+                            <div className="mt-1">
+                              <EvidenceList paymentId={p.id} evidence={evidenceByPayment.get(p.id) ?? []} emptyLabel={p.status === "pending" ? "No proof attached" : null} />
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{formatDate(p.paymentDate)}</TableCell>
+                          <TableCell className="hidden sm:table-cell">
+                            <PaymentStatusBadge status={p.status} />
+                          </TableCell>
+                          <TableCell className="text-right font-medium tabular-nums">{formatCurrency(p.amount, cur)}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              {p.status === "pending" ? (
+                                <>
+                                  {can(current, "payments.record") ? <AddEvidenceButton compact paymentId={p.id} invoiceId={invoice.id} /> : null}
+                                  {can(current, "payments.verify") ? (
+                                    <>
+                                      <VerifyPaymentButton compact paymentId={p.id} invoiceId={invoice.id} label={label} />
+                                      <RejectPaymentDialog compact paymentId={p.id} invoiceId={invoice.id} label={label} />
+                                    </>
+                                  ) : null}
+                                  {can(current, "payments.record") ? <WithdrawPaymentButton compact paymentId={p.id} invoiceId={invoice.id} label={label} /> : null}
+                                </>
+                              ) : null}
+                              {p.status === "verified" ? (
+                                <>
+                                  <Button variant="ghost" size="icon-sm" aria-label="Download receipt" nativeButton={false} render={<a href={`/api/payments/${p.id}/receipt?download=1`} />}>
+                                    <Download />
+                                  </Button>
+                                  {can(current, "receipts.send") ? (
+                                    <EmailReceiptButton compact paymentId={p.id} receiptNumber={p.receiptNumber ?? ""} clientEmail={client.email} emailConfigured={isEmailConfigured()} />
+                                  ) : null}
+                                  {can(current, "payments.reverse") ? <ReversePaymentDialog compact paymentId={p.id} invoiceId={invoice.id} label={label} /> : null}
+                                </>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </CardContent>

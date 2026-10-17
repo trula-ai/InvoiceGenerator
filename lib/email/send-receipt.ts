@@ -2,7 +2,7 @@ import { render } from "@react-email/components";
 import { createElement } from "react";
 
 import { emailLogs } from "@/db/schema";
-import { getPaymentDetail } from "@/lib/data/payments";
+import { getPaymentDetail, hasReceipt } from "@/lib/data/payments";
 import { db } from "@/lib/db";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { isZero } from "@/lib/money";
@@ -33,6 +33,7 @@ export async function sendReceiptEmail(businessId: string, paymentId: string, op
   const detail = await getPaymentDetail(businessId, paymentId);
   if (!detail) throw new Error("Payment not found.");
   const { payment, invoice, client, business } = detail;
+  if (!hasReceipt(payment)) throw new Error("Receipts are issued for verified payments only. Verify the payment first.");
 
   const to = (options.to ?? client.email ?? "").trim().toLowerCase();
   if (!to) throw new Error("The client has no email address. Add one to the client or enter a recipient.");

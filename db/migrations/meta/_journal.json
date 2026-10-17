@@ -78,6 +78,13 @@
       "when": 1792218273188,
       "tag": "0010_phase_a_roles_invitations",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792225883662,
+      "tag": "0011_phase_b_payment_verification",
+      "breakpoints": true
     }
   ]
 }

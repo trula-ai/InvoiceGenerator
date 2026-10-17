@@ -31,6 +31,8 @@ const NET_REVENUE = and(
   inArray(invoices.status, ["pending", "partially_paid", "paid", "overdue"]),
 )!;
 const SIGNED_TOTAL_INR = sql`case when ${invoices.documentKind} = 'credit_note' then -${invoices.totalInr} else ${invoices.totalInr} end`;
+/** Only verified payments are money actually received. */
+const VERIFIED = eq(payments.status, "verified");
 
 /** Inclusive ISO date range for a calendar month offset from the current one. */
 function monthRange(offset: number, now = new Date()): { from: string; to: string; label: string; key: string } {
@@ -58,8 +60,8 @@ export async function getOverviewStats(businessId: string): Promise<OverviewStat
   const [totals] = await db
     .select({
       revenue: sql<string>`coalesce(sum(${SIGNED_TOTAL_INR}), 0)::numeric(14,2)::text`,
-      pending: sql<string>`coalesce(sum(${invoices.balanceDue} * ${invoices.exchangeRate}) filter (where ${IS_INVOICE} and ${invoices.status} in ('pending','partially_paid')), 0)::numeric(14,2)::text`,
-      overdue: sql<string>`coalesce(sum(${invoices.balanceDue} * ${invoices.exchangeRate}) filter (where ${IS_INVOICE} and ${invoices.status} = 'overdue'), 0)::numeric(14,2)::text`,
+      pending: sql<string>`coalesce(sum(${invoices.balanceDue} * ${invoices.exchangeRate}) filter (where ${IS_INVOICE} and ${invoices.status} in ('pending','partially_paid') and not ${invoices.isOverdue}), 0)::numeric(14,2)::text`,
+      overdue: sql<string>`coalesce(sum(${invoices.balanceDue} * ${invoices.exchangeRate}) filter (where ${IS_INVOICE} and ${invoices.isOverdue}), 0)::numeric(14,2)::text`,
       revenueThisMonth: sql<string>`coalesce(sum(${SIGNED_TOTAL_INR}) filter (where ${invoices.issueDate} between ${thisMonth.from} and ${thisMonth.to}), 0)::numeric(14,2)::text`,
       revenueLastMonth: sql<string>`coalesce(sum(${SIGNED_TOTAL_INR}) filter (where ${invoices.issueDate} between ${lastMonth.from} and ${lastMonth.to}), 0)::numeric(14,2)::text`,
     })
@@ -73,7 +75,7 @@ export async function getOverviewStats(businessId: string): Promise<OverviewStat
       lastMonth: sql<string>`coalesce(sum(${payments.amountInr}) filter (where ${payments.paymentDate} between ${lastMonth.from} and ${lastMonth.to}), 0)::text`,
     })
     .from(payments)
-    .where(eq(payments.businessId, businessId));
+    .where(and(eq(payments.businessId, businessId), VERIFIED));
 
   return [
     {
@@ -113,7 +115,7 @@ export async function getRevenueByMonth(businessId: string): Promise<{ points: R
       total: sql<string>`coalesce(sum(${payments.amountInr}), 0)::text`,
     })
     .from(payments)
-    .where(and(eq(payments.businessId, businessId), gte(payments.paymentDate, from), lte(payments.paymentDate, to)))
+    .where(and(eq(payments.businessId, businessId), VERIFIED, gte(payments.paymentDate, from), lte(payments.paymentDate, to)))
     .groupBy(sql`to_char(${payments.paymentDate}, 'YYYY-MM')`);
 
   const invoicedMap = new Map(invoiced.map((r) => [r.key, r.total]));
@@ -132,11 +134,15 @@ export async function getRevenueByMonth(businessId: string): Promise<{ points: R
 }
 
 export async function getInvoiceStats(businessId: string): Promise<InvoiceStats> {
+  // Overdue invoices are counted apart from the other unpaid ones, whatever their status.
   const rows = await db
-    .select({ status: invoices.status, count: sql<number>`count(*)`.mapWith(Number) })
+    .select({
+      status: sql<string>`case when ${invoices.isOverdue} then 'overdue' else ${invoices.status}::text end`,
+      count: sql<number>`count(*)`.mapWith(Number),
+    })
     .from(invoices)
     .where(and(eq(invoices.businessId, businessId), IS_INVOICE))
-    .groupBy(invoices.status);
+    .groupBy(sql`case when ${invoices.isOverdue} then 'overdue' else ${invoices.status}::text end`);
 
   const byStatus = Object.fromEntries(rows.map((r) => [r.status, r.count])) as Partial<Record<string, number>>;
   const paid = byStatus.paid ?? 0;
@@ -157,6 +163,7 @@ export async function getRecentInvoices(businessId: string, limit?: number): Pro
       amount: invoices.total,
       currency: invoices.currency,
       status: invoices.status,
+      isOverdue: invoices.isOverdue,
     })
     .from(invoices)
     .innerJoin(clients, eq(clients.id, invoices.clientId))
@@ -173,6 +180,7 @@ export async function getRecentInvoices(businessId: string, limit?: number): Pro
     amount: r.amount,
     currency: r.currency,
     status: r.status,
+    isOverdue: r.isOverdue,
   }));
 }
 
@@ -189,11 +197,12 @@ export async function getRecentPayments(businessId: string, limit?: number): Pro
       currency: invoices.currency,
       paidAt: payments.paymentDate,
       method: payments.method,
+      status: payments.status,
     })
     .from(payments)
     .innerJoin(invoices, eq(invoices.id, payments.invoiceId))
     .innerJoin(clients, eq(clients.id, invoices.clientId))
-    .where(eq(payments.businessId, businessId))
+    .where(and(eq(payments.businessId, businessId), VERIFIED))
     .orderBy(desc(payments.paymentDate), desc(payments.createdAt))
     .$dynamic();
   const rows = await (limit ? query.limit(limit) : query);

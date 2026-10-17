@@ -56,6 +56,8 @@ export interface RecentInvoice {
   amount: MoneyAmount;
   currency: string;
   status: InvoiceStatus;
+  /** Unpaid balance past the due date; shown beside the status. */
+  isOverdue: boolean;
 }
 
 export interface RecentPayment {
@@ -67,6 +69,8 @@ export interface RecentPayment {
   /** ISO date, YYYY-MM-DD */
   paidAt: string;
   method: string;
+  /** Verification state; the dashboard only lists verified payments. */
+  status: string;
 }
 
 export interface ClientRecord {
@@ -83,7 +87,8 @@ export interface ClientRecord {
 }
 
 export interface PaymentRecord extends RecentPayment {
-  receiptNumber: string;
+  /** Null until the payment is verified. */
+  receiptNumber: string | null;
   invoiceId: string;
 }
 

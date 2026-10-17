@@ -79,7 +79,7 @@ export async function getReportSummary(businessId: string, range: ReportRange): 
     .select({
       invoiced: sql<string>`coalesce(sum(${invoices.totalInr}), 0)::text`,
       outstanding: sql<string>`coalesce(sum(${invoices.balanceDue} * ${invoices.exchangeRate}) filter (where ${invoices.status} in ('pending','partially_paid','overdue')), 0)::numeric(14,2)::text`,
-      overdue: sql<string>`coalesce(sum(${invoices.balanceDue} * ${invoices.exchangeRate}) filter (where ${invoices.status} = 'overdue'), 0)::numeric(14,2)::text`,
+      overdue: sql<string>`coalesce(sum(${invoices.balanceDue} * ${invoices.exchangeRate}) filter (where ${invoices.isOverdue}), 0)::numeric(14,2)::text`,
       tax: sql<string>`coalesce(sum(${invoices.taxAmount} * ${invoices.exchangeRate}), 0)::numeric(14,2)::text`,
       count: sql<number>`count(*)`.mapWith(Number),
       paidCount: sql<number>`count(*) filter (where ${invoices.status} = 'paid')`.mapWith(Number),
@@ -91,7 +91,7 @@ export async function getReportSummary(businessId: string, range: ReportRange): 
   const [pay] = await db
     .select({ collected: sql<string>`coalesce(sum(${payments.amountInr}), 0)::text` })
     .from(payments)
-    .where(and(eq(payments.businessId, businessId), gte(payments.paymentDate, range.from), lte(payments.paymentDate, range.to)));
+    .where(and(eq(payments.businessId, businessId), eq(payments.status, "verified"), gte(payments.paymentDate, range.from), lte(payments.paymentDate, range.to)));
 
   const [credit] = await db
     .select({
@@ -176,7 +176,7 @@ export async function getMonthlyBreakdown(businessId: string, range: ReportRange
       total: sql<string>`coalesce(sum(${payments.amountInr}), 0)::text`,
     })
     .from(payments)
-    .where(and(eq(payments.businessId, businessId), gte(payments.paymentDate, range.from), lte(payments.paymentDate, range.to)))
+    .where(and(eq(payments.businessId, businessId), eq(payments.status, "verified"), gte(payments.paymentDate, range.from), lte(payments.paymentDate, range.to)))
     .groupBy(sql`to_char(${payments.paymentDate}, 'YYYY-MM')`);
 
   const invoicedMap = new Map(invoiced.map((r) => [r.key, r.total]));

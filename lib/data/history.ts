@@ -1,6 +1,6 @@
-import { and, desc, eq, gte, ilike, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
 
-import { clients, invoices, payments, type InvoiceStatus } from "@/db/schema";
+import { clients, invoices, payments, type InvoiceStatus, type PaymentStatus } from "@/db/schema";
 import { db } from "@/lib/db";
 
 /**
@@ -24,7 +24,10 @@ export interface HistoryEntry {
   amount: string;
   amountInr: string;
   status?: InvoiceStatus;
+  isOverdue?: boolean;
   method?: string;
+  /** Verification state of a payment entry. */
+  paymentStatus?: PaymentStatus;
   href: string;
 }
 
@@ -60,6 +63,7 @@ export async function getTransactionHistory(businessId: string, filters: History
         amount: invoices.total,
         amountInr: invoices.totalInr,
         status: invoices.status,
+        isOverdue: invoices.isOverdue,
       })
       .from(invoices)
       .innerJoin(clients, eq(clients.id, invoices.clientId))
@@ -87,7 +91,8 @@ export async function getTransactionHistory(businessId: string, filters: History
         id: payments.id,
         date: payments.paymentDate,
         createdAt: payments.createdAt,
-        reference: payments.receiptNumber,
+        reference: sql<string>`coalesce(${payments.receiptNumber}, 'Pending')`,
+        paymentStatus: payments.status,
         relatedReference: invoices.invoiceNumber,
         invoiceId: invoices.id,
         clientId: clients.id,

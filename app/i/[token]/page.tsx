@@ -33,7 +33,9 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
   const detail = await getInvoiceDetailByToken(token);
   if (!detail) notFound();
 
-  const { invoice, client, business, items, payments, installments, source } = detail;
+  const { invoice, client, business, items, installments, source } = detail;
+  // The client sees money the business has confirmed, never entries still awaiting verification.
+  const payments = detail.payments.filter((p) => p.status === "verified");
   const kind = invoice.documentKind;
   const hasPlan = installments.length > 0;
   const nextInstallment = hasPlan ? nextUnpaidInstallment(installments) : null;

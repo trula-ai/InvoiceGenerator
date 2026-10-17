@@ -45,6 +45,8 @@ export interface InvoiceListItem {
   clientName: string;
   invoiceType: "b2b" | "b2c";
   status: InvoiceStatus;
+  /** Unpaid balance past the due date; shown beside the status. */
+  isOverdue: boolean;
   issueDate: string;
   dueDate: string;
   currency: string;
@@ -99,7 +101,11 @@ export interface InvoiceDetail {
 
 type Tx = Pick<Database, "select" | "insert" | "update" | "delete" | "execute">;
 
-/** Statuses that can still receive payments. */
+/**
+ * Statuses that can still receive payments. `overdue` is no longer written
+ * (it became the `isOverdue` flag) but is kept so rows from before the
+ * change keep working until the next recalculation.
+ */
 export const PAYABLE_STATUSES: InvoiceStatus[] = ["pending", "partially_paid", "overdue"];
 
 /** Credit notes in these statuses count against their invoice. */
@@ -114,22 +120,21 @@ export interface CreateDocumentOptions {
 }
 
 /**
- * Promote past-due unpaid invoices to `overdue` and open quotes past their
- * validity date to `expired`. Idempotent and cheap; called at the start of
- * list, dashboard and report loads so filters and counts are always current.
+ * Refreshes the `isOverdue` flag of unpaid invoices (an unpaid balance past
+ * the due date) and expires open quotes past their validity date. Idempotent
+ * and cheap; called at the start of list, dashboard and report loads so
+ * filters and counts are always current.
  */
 export async function syncOverdueStatuses(businessId: string): Promise<void> {
+  const unpaid = and(eq(invoices.businessId, businessId), eq(invoices.documentKind, "invoice"), inArray(invoices.status, ["pending", "partially_paid", "overdue"]));
   await db
     .update(invoices)
-    .set({ status: "overdue", updatedAt: new Date() })
-    .where(
-      and(
-        eq(invoices.businessId, businessId),
-        eq(invoices.documentKind, "invoice"),
-        inArray(invoices.status, ["pending", "partially_paid"]),
-        sql`${invoices.dueDate} < current_date`,
-      ),
-    );
+    .set({ isOverdue: true, updatedAt: new Date() })
+    .where(and(unpaid, eq(invoices.isOverdue, false), sql`${invoices.dueDate} < current_date`, sql`${invoices.balanceDue} > 0`));
+  await db
+    .update(invoices)
+    .set({ isOverdue: false, updatedAt: new Date() })
+    .where(and(eq(invoices.businessId, businessId), eq(invoices.isOverdue, true), or(sql`${invoices.dueDate} >= current_date`, sql`${invoices.balanceDue} <= 0`, inArray(invoices.status, ["paid", "cancelled", "draft"]))));
   await db
     .update(invoices)
     .set({ status: "expired", updatedAt: new Date() })
@@ -155,7 +160,9 @@ export async function listInvoices(
   const source = alias(invoices, "source");
 
   const conditions = [eq(invoices.businessId, businessId), eq(invoices.documentKind, kind)];
-  if (filters.status && filters.status !== "all") conditions.push(eq(invoices.status, filters.status));
+  // "Overdue" is a flag on unpaid invoices, offered as a filter choice alongside the statuses.
+  if (filters.status === "overdue") conditions.push(eq(invoices.isOverdue, true));
+  else if (filters.status && filters.status !== "all") conditions.push(eq(invoices.status, filters.status));
   if (filters.clientId) conditions.push(eq(invoices.clientId, filters.clientId));
   if (filters.from) conditions.push(gte(invoices.issueDate, filters.from));
   if (filters.to) conditions.push(lte(invoices.issueDate, filters.to));
@@ -182,6 +189,7 @@ export async function listInvoices(
       clientName: clients.name,
       invoiceType: invoices.invoiceType,
       status: invoices.status,
+      isOverdue: invoices.isOverdue,
       issueDate: invoices.issueDate,
       dueDate: invoices.dueDate,
       currency: invoices.currency,
@@ -355,8 +363,13 @@ function prefixFor(business: Business, kind: DocumentKind): string {
 /** Status a document gets when it is issued on `issueDate` with validity/due date `dueDate`. */
 function issuedStatus(kind: DocumentKind, dueDate: string): InvoiceStatus {
   if (kind === "credit_note") return "pending";
-  if (dueDate < todayIso()) return kind === "quote" ? "expired" : "overdue";
+  if (kind === "quote" && dueDate < todayIso()) return "expired";
   return "pending";
+}
+
+/** An invoice issued with a due date already in the past starts overdue. */
+function overdueAtIssue(kind: DocumentKind, status: InvoiceStatus, dueDate: string): boolean {
+  return kind === "invoice" && status === "pending" && dueDate < todayIso();
 }
 
 /**
@@ -418,6 +431,7 @@ export async function createInvoice(business: Business, values: InvoiceFormValue
         financialYear,
         publicToken: newPublicToken(),
         status,
+        isOverdue: overdueAtIssue(kind, status, values.dueDate),
         amountPaid: "0",
         creditAmount: "0",
         balanceDue: kind === "invoice" ? total : "0",
@@ -476,7 +490,7 @@ export async function updateInvoice(business: Business, id: string, values: Invo
     }
     await tx
       .update(invoices)
-      .set({ ...row, status, balanceDue: kind === "invoice" ? total : "0", updatedAt: new Date() })
+      .set({ ...row, status, isOverdue: overdueAtIssue(kind, status, values.dueDate), balanceDue: kind === "invoice" ? total : "0", updatedAt: new Date() })
       .where(eq(invoices.id, id));
     await tx.delete(invoiceItems).where(eq(invoiceItems.invoiceId, id));
     if (itemRows.length) {
@@ -509,7 +523,7 @@ export async function issueInvoice(businessId: string, id: string): Promise<void
       if (!existing.sourceDocumentId) throw new Error("This credit note is not linked to an invoice.");
       await assertCreditable(tx, businessId, existing.sourceDocumentId, existing.currency, existing.total, id);
     }
-    await tx.update(invoices).set({ status, updatedAt: new Date() }).where(eq(invoices.id, id));
+    await tx.update(invoices).set({ status, isOverdue: overdueAtIssue(existing.documentKind, status, existing.dueDate), updatedAt: new Date() }).where(eq(invoices.id, id));
     if (existing.documentKind === "credit_note") {
       await applyPaymentTotals(tx, existing.sourceDocumentId!);
       await notifyInvoiceEvent(businessId, id, "credit_note_issued", {}, tx);
@@ -556,7 +570,11 @@ export async function markInvoiceSent(businessId: string, id: string): Promise<v
     .limit(1);
   if (!existing) return;
   const status: InvoiceStatus = existing.status === "draft" ? issuedStatus(existing.documentKind, existing.dueDate) : existing.status;
-  await db.update(invoices).set({ sentAt: new Date(), status, updatedAt: new Date() }).where(eq(invoices.id, id));
+  const wasDraft = existing.status === "draft";
+  await db
+    .update(invoices)
+    .set({ sentAt: new Date(), status, ...(wasDraft ? { isOverdue: overdueAtIssue(existing.documentKind, status, existing.dueDate) } : {}), updatedAt: new Date() })
+    .where(eq(invoices.id, id));
 }
 
 /**
@@ -573,10 +591,11 @@ export async function applyPaymentTotals(tx: Tx, invoiceId: string): Promise<voi
   if (!inv) throw new Error("Invoice not found.");
   if (inv.documentKind !== "invoice") return;
 
+  // Only verified payments count; pending, rejected and reversed rows never touch the balance.
   const [agg] = await tx
     .select({ paid: sql<string>`coalesce(sum(${payments.amount}), 0)::text` })
     .from(payments)
-    .where(eq(payments.invoiceId, invoiceId));
+    .where(and(eq(payments.invoiceId, invoiceId), eq(payments.status, "verified")));
   const [credits] = await tx
     .select({ sum: sql<string>`coalesce(sum(${invoices.total}), 0)::text` })
     .from(invoices)
@@ -597,10 +616,12 @@ export async function applyPaymentTotals(tx: Tx, invoiceId: string): Promise<voi
   } else if (isZero(balanceDue)) {
     status = "paid";
   } else if (isPositive(amountPaid)) {
-    status = dueDate < todayIso() ? "overdue" : "partially_paid";
+    status = "partially_paid";
   } else {
-    status = dueDate < todayIso() ? "overdue" : "pending";
+    status = "pending";
   }
+  // Overdue sits beside the status: an invoice can be partially paid and overdue at once.
+  const isOverdue = (status === "pending" || status === "partially_paid") && dueDate < todayIso() && isPositive(balanceDue);
 
   await tx
     .update(invoices)
@@ -609,6 +630,7 @@ export async function applyPaymentTotals(tx: Tx, invoiceId: string): Promise<voi
       creditAmount,
       balanceDue,
       status,
+      isOverdue,
       dueDate,
       paidAt: status === "paid" ? (inv.paidAt ?? new Date()) : null,
       updatedAt: new Date(),

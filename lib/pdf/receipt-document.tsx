@@ -10,9 +10,11 @@ import { pdfStyles as s } from "./styles";
 export function ReceiptDocument({ detail }: { detail: PaymentDetail }) {
   const { payment, invoice, client, business } = detail;
   const cur = invoice.currency;
+  // Only verified payments are rendered; the number is null before verification.
+  const receiptNumber = payment.receiptNumber ?? "RECEIPT";
 
   return (
-    <Document title={payment.receiptNumber} author={business.name}>
+    <Document title={receiptNumber} author={business.name}>
       <Page size="A4" style={s.page}>
         <View style={s.header}>
           <View style={{ maxWidth: 300 }}>
@@ -25,7 +27,7 @@ export function ReceiptDocument({ detail }: { detail: PaymentDetail }) {
           </View>
           <View>
             <Text style={s.docTitle}>PAYMENT RECEIPT</Text>
-            <Text style={[s.right, s.bold, { fontSize: 11, marginTop: 4 }]}>{payment.receiptNumber}</Text>
+            <Text style={[s.right, s.bold, { fontSize: 11, marginTop: 4 }]}>{receiptNumber}</Text>
           </View>
         </View>
 
@@ -97,7 +99,7 @@ export function ReceiptDocument({ detail }: { detail: PaymentDetail }) {
         ) : null}
 
         <Text style={s.footer} fixed>
-          {business.name} · {payment.receiptNumber} · Thank you for your payment.
+          {business.name} · {receiptNumber} · Thank you for your payment.
         </Text>
       </Page>
     </Document>

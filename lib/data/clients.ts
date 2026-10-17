@@ -109,6 +109,7 @@ export async function getClientInvoiceHistory(businessId: string, clientId: stri
       issueDate: invoices.issueDate,
       dueDate: invoices.dueDate,
       status: invoices.status,
+      isOverdue: invoices.isOverdue,
       currency: invoices.currency,
       total: invoices.total,
       amountPaid: invoices.amountPaid,

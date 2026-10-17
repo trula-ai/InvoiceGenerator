@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { can, getCurrentUser } from "@/lib/auth/current-user";
-import { getPaymentDetail } from "@/lib/data/payments";
+import { getPaymentDetail, hasReceipt } from "@/lib/data/payments";
 import { pdfFileName, renderReceiptPdf } from "@/lib/pdf/render";
 
 /** GET /api/payments/:id/receipt?download=1 — streams the payment receipt PDF. */
@@ -13,6 +13,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const detail = await getPaymentDetail(current.business.id, id);
   if (!detail) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!hasReceipt(detail.payment)) return NextResponse.json({ error: "Receipts are issued for verified payments only." }, { status: 409 });
 
   const pdf = await renderReceiptPdf(detail);
   const download = new URL(request.url).searchParams.get("download") === "1";
