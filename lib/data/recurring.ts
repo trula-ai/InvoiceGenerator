@@ -22,7 +22,8 @@ import type { InvoiceFormValues } from "@/lib/validation/invoice";
 import type { RecurringScheduleValues } from "@/lib/validation/recurring";
 
 /**
- * Recurring invoice profiles. A profile is created from an issued invoice
+ * Scheduled invoices (shown as "Scheduled" in the app; the table and code keep
+ * the older "recurring profile" name). A profile is created from an issued invoice
  * (its lines become the template) and generates a new invoice on every run
  * date. `runRecurringProfiles` is called by the daily checks; `runProfileNow`
  * backs the "Generate now" button.
@@ -88,7 +89,7 @@ export async function listGeneratedInvoices(businessId: string, profileId: strin
 /** Builds the template from an existing invoice of this business. */
 export async function templateFromInvoice(businessId: string, invoiceId: string): Promise<{ template: RecurringTemplate; clientId: string; invoiceNumber: string; currency: string }> {
   const detail = await getInvoiceDetail(businessId, invoiceId);
-  if (!detail || detail.invoice.documentKind !== "invoice") throw new Error("Recurring schedules are created from an invoice.");
+  if (!detail || detail.invoice.documentKind !== "invoice") throw new Error("Scheduled invoices are created from an invoice.");
   const { invoice, items } = detail;
   const template: RecurringTemplate = {
     invoiceType: invoice.invoiceType,

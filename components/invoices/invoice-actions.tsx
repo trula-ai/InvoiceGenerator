@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowRightLeft, Ban, BellRing, Check, Copy, CopyPlus, Download, Eye, FileMinus, Link2, Mail, Pencil, Repeat, Send, Trash2, X } from "lucide-react";
+import { ArrowRightLeft, Ban, BellRing, CalendarClock, Check, Copy, CopyPlus, Download, Eye, FileMinus, Link2, Mail, Pencil, Repeat, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -58,10 +58,13 @@ interface InvoiceActionsProps {
   clientEmail: string | null;
   emailConfigured: boolean;
   publicToken: string;
+  /** Installment plan state for invoices: whether one exists and what is due next. */
+  installments?: { hasPlan: boolean; next: { sequence: number; count: number; outstanding: string } | null };
 }
 
 export function InvoiceActions(props: InvoiceActionsProps) {
-  const { kind = "invoice", invoiceId, status, currency, balanceDue, hasPayments, editable, converted = false, clientEmail, publicToken } = props;
+  const { kind = "invoice", invoiceId, status, currency, balanceDue, hasPayments, editable, converted = false, clientEmail, publicToken, installments } = props;
+  const nextInstallment = installments?.next ? { amount: installments.next.outstanding, label: `Installment ${installments.next.sequence} of ${installments.next.count}` } : null;
   const [pending, startTransition] = useTransition();
   const label = documentLabel(kind);
   const lower = label.toLowerCase();
@@ -114,7 +117,7 @@ export function InvoiceActions(props: InvoiceActionsProps) {
         <EmailDialog kind="reminder" invoiceId={invoiceId} clientEmail={clientEmail} emailConfigured={props.emailConfigured} overdue={status === "overdue"} />
       ) : null}
 
-      {payable ? <RecordPaymentDialog invoiceId={invoiceId} currency={currency} balanceDue={balanceDue} /> : null}
+      {payable ? <RecordPaymentDialog invoiceId={invoiceId} currency={currency} balanceDue={balanceDue} suggested={nextInstallment} /> : null}
 
       {status === "draft" ? (
         <Button onClick={() => run(() => issueInvoiceAction(invoiceId), `${label} issued`)} disabled={pending}>
@@ -153,9 +156,21 @@ export function InvoiceActions(props: InvoiceActionsProps) {
         </Button>
       ) : null}
 
+      {payable ? (
+        installments?.hasPlan ? (
+          <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/recurring/${invoiceId}`} />} title="Change the installment dates or amounts">
+            <Repeat /> Edit installments
+          </Button>
+        ) : (
+          <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/recurring/new?invoice=${invoiceId}`} />} title="Split the total into EMI-style installments">
+            <Repeat /> Recurring (EMI)
+          </Button>
+        )
+      ) : null}
+
       {isInvoice && status !== "cancelled" ? (
-        <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/recurring/new?invoice=${invoiceId}`} />} title="Bill these lines again on a schedule">
-          <Repeat /> Make recurring
+        <Button variant="outline" nativeButton={false} render={<Link href={`/dashboard/scheduled/new?invoice=${invoiceId}`} />} title="Bill these lines again on a schedule">
+          <CalendarClock /> Schedule repeat
         </Button>
       ) : null}
 

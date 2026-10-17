@@ -8,6 +8,7 @@ import { createPaymentOrder, findPaymentOrder, markPaymentOrder } from "@/lib/da
 import { recordGatewayPayment } from "@/lib/data/payments";
 import { db } from "@/lib/db";
 import { todayIso } from "@/lib/fiscal-year";
+import { amountDueNow } from "@/lib/installments";
 import { D, isPositive } from "@/lib/money";
 
 import {
@@ -53,7 +54,9 @@ export async function startCheckout(token: string): Promise<CheckoutSession> {
     throw new Error("This invoice has nothing left to pay.");
   }
 
-  const amountMinor = toMinorUnits(invoice.balanceDue, invoice.currency);
+  // With an installment plan the client pays the next installment, not the whole balance.
+  const amountDue = amountDueNow(invoice.balanceDue, detail.installments);
+  const amountMinor = toMinorUnits(amountDue, invoice.currency);
   const order = await createRazorpayOrder({
     amountMinor,
     currency: invoice.currency,
@@ -65,7 +68,7 @@ export async function startCheckout(token: string): Promise<CheckoutSession> {
     invoiceId: invoice.id,
     provider: "razorpay",
     providerOrderId: order.id,
-    amount: invoice.balanceDue,
+    amount: amountDue,
     currency: invoice.currency,
   });
 

@@ -6,6 +6,8 @@ import { formatAmount, formatCurrencyCode, formatDate, formatRate } from "@/lib/
 import { BASE_CURRENCY } from "@/lib/currency";
 import { documentLabel, documentTitle, secondDateLabel, statusLabel } from "@/lib/documents";
 import { summariseByHsn } from "@/lib/hsn-summary";
+import { INSTALLMENT_STATE_LABELS, installmentOutstanding, installmentState } from "@/lib/installments";
+import { todayIso } from "@/lib/fiscal-year";
 import { D, isZero } from "@/lib/money";
 
 import { pdfStyles as s } from "./styles";
@@ -31,8 +33,9 @@ function textLines(value: string | null | undefined): string[] {
 }
 
 export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
-  const { invoice, client, business, items, source } = detail;
+  const { invoice, client, business, items, installments, source } = detail;
   const kind = invoice.documentKind;
+  const today = todayIso();
   const cur = invoice.currency;
   const showGst = invoice.gstApplied;
   const showDiscount = !isZero(invoice.discountAmount);
@@ -78,7 +81,7 @@ export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
             <Text>{formatDate(invoice.issueDate)}</Text>
           </View>
           <View style={s.metaCell}>
-            <Text style={s.label}>{secondDateLabel(kind)}</Text>
+            <Text style={s.label}>{installments.length > 0 ? "Next installment due" : secondDateLabel(kind)}</Text>
             <Text>{formatDate(invoice.dueDate)}</Text>
           </View>
           {source ? (
@@ -271,6 +274,31 @@ export function InvoiceDocument({ detail }: { detail: InvoiceDetail }) {
           <Text style={s.label}>Amount in words</Text>
           <Text style={s.bold}>{amountInWords(invoice.total, cur)}</Text>
         </View>
+
+        {/* Installment plan */}
+        {installments.length ? (
+          <View style={s.section} wrap={false}>
+            <Text style={s.sectionTitle}>Payment schedule</Text>
+            <View style={s.table}>
+              <View style={s.tableHeader}>
+                <Text style={[s.th, { width: 30 }]}>#</Text>
+                <Text style={[s.th, { width: 110 }]}>Due date</Text>
+                <Text style={[s.th, s.right, { flex: 1 }]}>Amount</Text>
+                <Text style={[s.th, s.right, { width: 100 }]}>Outstanding</Text>
+                <Text style={[s.th, { width: 80, paddingLeft: 12 }]}>Status</Text>
+              </View>
+              {installments.map((row, i) => (
+                <View key={row.id} style={i === installments.length - 1 ? s.tableRowLast : s.tableRow}>
+                  <Text style={[s.td, { width: 30 }]}>{row.sequence}</Text>
+                  <Text style={[s.td, { width: 110 }]}>{formatDate(row.dueDate)}</Text>
+                  <Text style={[s.td, s.right, { flex: 1 }]}>{formatAmount(row.amount, cur)}</Text>
+                  <Text style={[s.td, s.right, { width: 100 }]}>{formatAmount(installmentOutstanding(row), cur)}</Text>
+                  <Text style={[s.td, { width: 80, paddingLeft: 12 }]}>{INSTALLMENT_STATE_LABELS[installmentState(row, today)]}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         {/* HSN / SAC summary */}
         {hsnRows.length ? (

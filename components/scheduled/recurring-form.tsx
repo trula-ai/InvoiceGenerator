@@ -29,9 +29,13 @@ interface RecurringFormProps {
   defaultValues?: Partial<RecurringScheduleInput>;
   /** Shown in the preview card. */
   summary: { clientName: string; sourceInvoiceNumber: string; totalLabel: string; itemCount: number };
+  /** Rendered at the top of the Schedule card, e.g. the invoice picker. */
+  before?: React.ReactNode;
+  /** Cancel handler; defaults to going back in history. */
+  onCancel?: () => void;
 }
 
-export function RecurringForm({ mode, invoiceId, profileId, defaultValues, summary }: RecurringFormProps) {
+export function RecurringForm({ mode, invoiceId, profileId, defaultValues, summary, before, onCancel }: RecurringFormProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   const form = useForm<RecurringScheduleInput, unknown, RecurringScheduleValues>({
     resolver: zodResolver(recurringScheduleSchema),
@@ -73,6 +77,7 @@ export function RecurringForm({ mode, invoiceId, profileId, defaultValues, summa
           </CardHeader>
           <CardContent>
             <FieldGroup>
+              {before}
               <Field data-invalid={!!errors.name}>
                 <FieldLabel htmlFor="name">Name</FieldLabel>
                 <Input id="name" placeholder="Monthly retainer" {...form.register("name")} />
@@ -152,7 +157,7 @@ export function RecurringForm({ mode, invoiceId, profileId, defaultValues, summa
           <Button type="submit" disabled={isSubmitting} className="flex-1">
             {isSubmitting ? <Spinner /> : null} {mode === "create" ? "Start schedule" : "Save changes"}
           </Button>
-          <Button type="button" variant="outline" onClick={() => history.back()}>
+          <Button type="button" variant="outline" onClick={() => (onCancel ? onCancel() : history.back())}>
             Cancel
           </Button>
         </div>

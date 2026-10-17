@@ -1,111 +1,104 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Repeat } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { RecurringActions } from "@/components/recurring/recurring-actions";
+import { StatusBadge } from "@/components/dashboard/status-badge";
+import { BulkPlanSetup } from "@/components/installments/bulk-plan-setup";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireUser } from "@/lib/auth/current-user";
-import { listRecurringProfiles } from "@/lib/data/recurring";
+import { listInstallmentCandidates } from "@/lib/data/installment-candidates";
+import { listInstallmentPlans } from "@/lib/data/installments";
+import { syncOverdueStatuses } from "@/lib/data/invoices";
 import { todayIso } from "@/lib/fiscal-year";
-import { formatDate } from "@/lib/format";
-import { FREQUENCY_LABELS, RECURRING_STATUS_LABELS } from "@/lib/recurring";
+import { formatCurrency, formatDate } from "@/lib/format";
 
-export const metadata: Metadata = { title: "Recurring invoices" };
-
-const STATUS_VARIANT = { active: "default", paused: "secondary", ended: "outline" } as const;
+export const metadata: Metadata = { title: "Recurring payments" };
 
 export default async function RecurringPage() {
   const { business } = await requireUser();
-  const profiles = await listRecurringProfiles(business.id);
+  await syncOverdueStatuses(business.id);
+  const [plans, candidates] = await Promise.all([listInstallmentPlans(business.id), listInstallmentCandidates(business.id)]);
   const today = todayIso();
+  const active = plans.filter((p) => p.next);
+  const settled = plans.filter((p) => !p.next);
 
   return (
     <>
-      <PageHeader title="Recurring invoices" description="Schedules that generate and send invoices automatically. Create one from any issued invoice.">
-        <Button variant="outline" nativeButton={false} render={<Link href="/dashboard/invoices" />}>
-          Pick an invoice to repeat
-        </Button>
-      </PageHeader>
+      <PageHeader
+        title="Recurring payments"
+        description="Invoices paid in installments, EMI style. Each installment has its own due date, reminder and overdue status."
+      />
 
-      {profiles.length === 0 ? (
-        <Empty className="border">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Repeat />
-            </EmptyMedia>
-            <EmptyTitle>No recurring schedules yet</EmptyTitle>
-            <EmptyDescription>Open an issued invoice and choose &ldquo;Make recurring&rdquo; to bill the same lines weekly, monthly, quarterly or yearly.</EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button nativeButton={false} render={<Link href="/dashboard/invoices" />}>
-              Go to invoices
-            </Button>
-          </EmptyContent>
-        </Empty>
-      ) : (
-        <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Schedule</TableHead>
-                <TableHead className="hidden sm:table-cell">Client</TableHead>
-                <TableHead className="hidden md:table-cell">Repeats</TableHead>
-                <TableHead>Next invoice</TableHead>
-                <TableHead className="hidden lg:table-cell">Last invoice</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {profiles.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    <Link href={`/dashboard/recurring/${p.id}`} className="font-medium hover:underline">
-                      {p.name}
-                    </Link>
-                    <p className="text-xs text-muted-foreground">
-                      From {p.sourceInvoiceNumber ?? "invoice"} · {p.occurrences} generated{p.autoSend ? " · auto-send" : ""}
-                    </p>
-                    {p.lastError ? <p className="text-xs text-destructive">Last run failed: {p.lastError}</p> : null}
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">{p.clientName}</TableCell>
-                  <TableCell className="hidden text-muted-foreground md:table-cell">{FREQUENCY_LABELS[p.frequency]}</TableCell>
-                  <TableCell>
-                    {p.status === "active" ? (
-                      <span className={p.nextRunDate <= today ? "font-medium text-amber-600 dark:text-amber-400" : ""}>{formatDate(p.nextRunDate)}</span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    {p.lastInvoiceId && p.lastInvoiceNumber ? (
-                      <Link href={`/dashboard/invoices/${p.lastInvoiceId}`} className="hover:underline">
-                        {p.lastInvoiceNumber}
-                      </Link>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_VARIANT[p.status]}>{RECURRING_STATUS_LABELS[p.status]}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end">
-                      <RecurringActions id={p.id} status={p.status} compact />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Unpaid invoices</h2>
+          <p className="text-sm text-muted-foreground">Select one or more invoices, then set up recurring payments for all of them in one go.</p>
         </div>
-      )}
+        <BulkPlanSetup candidates={candidates} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Installment plans</h2>
+          <p className="text-sm text-muted-foreground">
+            {plans.length ? `${active.length} in progress · ${settled.length} fully paid` : "Plans you create appear here with their progress and next installment."}
+          </p>
+        </div>
+        {plans.length > 0 ? (
+          <div className="rounded-xl border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead className="hidden md:table-cell">Client</TableHead>
+                  <TableHead className="w-44">Progress</TableHead>
+                  <TableHead className="hidden sm:table-cell">Next installment</TableHead>
+                  <TableHead className="text-right">Next amount</TableHead>
+                  <TableHead className="hidden text-right lg:table-cell">Balance</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[...active, ...settled].map((p) => {
+                  const overdue = p.next ? p.next.dueDate < today : false;
+                  return (
+                    <TableRow key={p.invoiceId}>
+                      <TableCell>
+                        <Link href={`/dashboard/recurring/${p.invoiceId}`} className="font-medium hover:underline">
+                          {p.invoiceNumber}
+                        </Link>
+                        <p className="text-xs text-muted-foreground md:hidden">{p.clientName}</p>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <Link href={`/dashboard/clients/${p.clientId}`} className="hover:underline">
+                          {p.clientName}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Progress value={(p.paidCount / p.count) * 100} className="h-1.5 flex-1" />
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {p.paidCount}/{p.count}
+                          </span>
+                        </div>
+                        {p.overdueCount > 0 ? <p className="mt-1 text-xs text-destructive">{p.overdueCount} overdue</p> : null}
+                      </TableCell>
+                      <TableCell className={`hidden sm:table-cell ${overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}>
+                        {p.next ? `#${p.next.sequence} · ${formatDate(p.next.dueDate)}` : `Finished ${formatDate(p.endDate)}`}
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">{p.next ? formatCurrency(p.next.outstanding, p.currency) : "—"}</TableCell>
+                      <TableCell className="hidden text-right tabular-nums lg:table-cell">{formatCurrency(p.balanceDue, p.currency)}</TableCell>
+                      <TableCell>{p.next ? <StatusBadge status={p.invoiceStatus} /> : <Badge variant="outline">All paid</Badge>}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        ) : null}
+      </section>
     </>
   );
 }

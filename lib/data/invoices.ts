@@ -6,6 +6,7 @@ import {
   businesses,
   clients,
   emailLogs,
+  invoiceInstallments,
   invoiceItems,
   invoices,
   payments,
@@ -14,12 +15,15 @@ import {
   type DocumentKind,
   type EmailLog,
   type Invoice,
+  type InvoiceInstallment,
   type InvoiceItem,
   type InvoiceStatus,
   type Payment,
 } from "@/db/schema";
 import { calculateBalance, calculateInvoice } from "@/lib/calculations";
+import { syncInstallmentAllocation } from "@/lib/data/installment-sync";
 import { notifyInvoiceEvent } from "@/lib/data/notifications";
+import { rescaleInstallments } from "@/lib/installments";
 import { db, type Database } from "@/lib/db";
 import { nextDocumentNumber } from "@/lib/document-number";
 import { QUOTE_CONVERTIBLE_STATUSES, QUOTE_OPEN_STATUSES, documentLabel } from "@/lib/documents";
@@ -82,6 +86,8 @@ export interface InvoiceDetail {
   business: Business;
   items: InvoiceItem[];
   payments: Payment[];
+  /** Installment plan rows in sequence order; empty when the invoice has no plan. */
+  installments: InvoiceInstallment[];
   emails: EmailLog[];
   /** Quote this invoice came from, or invoice this credit note is against. */
   source: RelatedDocument | null;
@@ -248,9 +254,10 @@ export async function getInvoiceDetail(businessId: string, id: string): Promise<
     .limit(1);
   if (!row) return null;
 
-  const [items, paymentRows, emails, source, convertedTo, creditNotes] = await Promise.all([
+  const [items, paymentRows, installments, emails, source, convertedTo, creditNotes] = await Promise.all([
     db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, id)).orderBy(asc(invoiceItems.sortOrder)),
     db.select().from(payments).where(eq(payments.invoiceId, id)).orderBy(desc(payments.paymentDate), desc(payments.createdAt)),
+    db.select().from(invoiceInstallments).where(eq(invoiceInstallments.invoiceId, id)).orderBy(asc(invoiceInstallments.sequence)),
     db.select().from(emailLogs).where(eq(emailLogs.invoiceId, id)).orderBy(desc(emailLogs.createdAt)),
     getRelated(businessId, row.invoice.sourceDocumentId),
     getRelated(businessId, row.invoice.convertedToId),
@@ -263,7 +270,7 @@ export async function getInvoiceDetail(businessId: string, id: string): Promise<
       : Promise.resolve([] as RelatedDocument[]),
   ]);
 
-  return { invoice: row.invoice, client: row.client, business: row.business, items, payments: paymentRows, emails, source, convertedTo, creditNotes };
+  return { invoice: row.invoice, client: row.client, business: row.business, items, payments: paymentRows, installments, emails, source, convertedTo, creditNotes };
 }
 
 /** Everything needed to persist a document from validated form values. */
@@ -479,6 +486,10 @@ export async function updateInvoice(business: Business, id: string, values: Invo
       await applyPaymentTotals(tx, existing.sourceDocumentId);
       if (existing.status === "draft" && status !== "draft") await notifyInvoiceEvent(business.id, id, "credit_note_issued", {}, tx);
     }
+    if (kind === "invoice" && (await rescaleInstallmentPlan(tx, id, total))) {
+      // The plan decides the due date and status, not the form's due date.
+      await applyPaymentTotals(tx, id);
+    }
   });
 }
 
@@ -573,7 +584,12 @@ export async function applyPaymentTotals(tx: Tx, invoiceId: string): Promise<voi
 
   const amountPaid = D(agg?.paid ?? 0).toFixed(2);
   const creditAmount = D(credits?.sum ?? 0).toFixed(2);
-  const balanceDue = calculateBalance(inv.total, D(amountPaid).plus(D(creditAmount)));
+  const covered = D(amountPaid).plus(D(creditAmount));
+  const balanceDue = calculateBalance(inv.total, covered);
+
+  // With an installment plan the invoice is due when its next unpaid installment is.
+  const plan = await syncInstallmentAllocation(tx, invoiceId, toMoney(covered));
+  const dueDate = plan.hasPlan && plan.effectiveDueDate ? plan.effectiveDueDate : inv.dueDate;
 
   let status: InvoiceStatus;
   if (inv.status === "cancelled" || inv.status === "draft") {
@@ -581,9 +597,9 @@ export async function applyPaymentTotals(tx: Tx, invoiceId: string): Promise<voi
   } else if (isZero(balanceDue)) {
     status = "paid";
   } else if (isPositive(amountPaid)) {
-    status = inv.dueDate < todayIso() ? "overdue" : "partially_paid";
+    status = dueDate < todayIso() ? "overdue" : "partially_paid";
   } else {
-    status = inv.dueDate < todayIso() ? "overdue" : "pending";
+    status = dueDate < todayIso() ? "overdue" : "pending";
   }
 
   await tx
@@ -593,10 +609,26 @@ export async function applyPaymentTotals(tx: Tx, invoiceId: string): Promise<voi
       creditAmount,
       balanceDue,
       status,
+      dueDate,
       paidAt: status === "paid" ? (inv.paidAt ?? new Date()) : null,
       updatedAt: new Date(),
     })
     .where(eq(invoices.id, invoiceId));
+}
+
+/**
+ * Keeps an installment plan consistent after the invoice total changed (the
+ * invoice was edited): amounts are scaled proportionally, dates are kept.
+ * Returns false when the invoice has no plan.
+ */
+export async function rescaleInstallmentPlan(tx: Tx, invoiceId: string, newTotal: string): Promise<boolean> {
+  const rows = await tx.select().from(invoiceInstallments).where(eq(invoiceInstallments.invoiceId, invoiceId)).orderBy(asc(invoiceInstallments.sequence));
+  if (rows.length === 0) return false;
+  const scaled = rescaleInstallments(rows, newTotal);
+  for (const row of scaled) {
+    await tx.update(invoiceInstallments).set({ amount: row.amount, updatedAt: new Date() }).where(eq(invoiceInstallments.id, row.id));
+  }
+  return true;
 }
 
 // --- Quotes ------------------------------------------------------------------

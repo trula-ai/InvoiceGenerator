@@ -65,7 +65,7 @@ export function RecurringActions({ id, status, compact = false }: { id: string; 
         </Button>
       ) : null}
       {!compact ? (
-        <Button size={size} variant="outline" nativeButton={false} render={<Link href={`/dashboard/recurring/${id}/edit`} />}>
+        <Button size={size} variant="outline" nativeButton={false} render={<Link href={`/dashboard/scheduled/${id}/edit`} />}>
           <Pencil /> Edit schedule
         </Button>
       ) : null}

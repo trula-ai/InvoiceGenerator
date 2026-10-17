@@ -1,5 +1,6 @@
 import {
   Bell,
+  CalendarClock,
   ChartColumn,
   ClipboardList,
   CreditCard,
@@ -31,6 +32,7 @@ export const dashboardNav: NavItem[] = [
   { title: "Quotes", href: "/dashboard/quotes", icon: FilePen },
   { title: "Invoices", href: "/dashboard/invoices", icon: FileText },
   { title: "Credit notes", href: "/dashboard/credit-notes", icon: FileMinus },
+  { title: "Scheduled", href: "/dashboard/scheduled", icon: CalendarClock },
   { title: "Recurring", href: "/dashboard/recurring", icon: Repeat },
   { title: "Payments", href: "/dashboard/payments", icon: CreditCard },
   { title: "History", href: "/dashboard/history", icon: History },

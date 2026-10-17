@@ -64,6 +64,13 @@
       "when": 1791795434488,
       "tag": "0008_phase4_recurring",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791821453970,
+      "tag": "0009_installments",
+      "breakpoints": true
     }
   ]
 }

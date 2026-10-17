@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { InstallmentScheduleTable } from "@/components/installments/installment-schedule-table";
 import { PayNowButton } from "@/components/public/pay-now-button";
 import { QuoteResponseButtons } from "@/components/public/quote-response-buttons";
 import { isRazorpayConfigured } from "@/lib/payments/razorpay";
@@ -16,6 +17,7 @@ import { getInvoiceDetailByToken } from "@/lib/data/invoices";
 import { QUOTE_OPEN_STATUSES, documentLabel, secondDateLabel, statusLabel } from "@/lib/documents";
 import { formatCurrency, formatDate, formatRate } from "@/lib/format";
 import { summariseByHsn } from "@/lib/hsn-summary";
+import { amountDueNow, installmentLabel, nextUnpaidInstallment } from "@/lib/installments";
 import { D, isZero } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/validation/payment";
 
@@ -31,8 +33,11 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
   const detail = await getInvoiceDetailByToken(token);
   if (!detail) notFound();
 
-  const { invoice, client, business, items, payments, source } = detail;
+  const { invoice, client, business, items, payments, installments, source } = detail;
   const kind = invoice.documentKind;
+  const hasPlan = installments.length > 0;
+  const nextInstallment = hasPlan ? nextUnpaidInstallment(installments) : null;
+  const payNowAmount = amountDueNow(invoice.balanceDue, installments);
   const cur = invoice.currency;
   const showGst = invoice.gstApplied;
   const title = kind === "invoice" ? (invoice.invoiceType === "b2b" && showGst ? "Tax invoice" : "Invoice") : documentLabel(kind);
@@ -95,7 +100,7 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
             </div>
             <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
               <Meta label="Issued" value={formatDate(invoice.issueDate)} />
-              <Meta label={secondDateLabel(kind)} value={formatDate(invoice.dueDate)} />
+              <Meta label={hasPlan ? "Next installment due" : secondDateLabel(kind)} value={formatDate(invoice.dueDate)} />
               {source ? <Meta label={kind === "credit_note" ? "Against invoice" : `From ${documentLabel(source.documentKind).toLowerCase()}`} value={source.invoiceNumber} /> : null}
               <Meta label="Currency" value={cur !== BASE_CURRENCY ? `${cur} · 1 ${cur} = ${formatRate(invoice.exchangeRate)} ${BASE_CURRENCY}` : cur} />
               {invoice.poNumber ? <Meta label="PO number" value={invoice.poNumber} /> : null}
@@ -245,6 +250,15 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
               </div>
             ) : null}
 
+            {isInvoice && hasPlan ? (
+              <div className="text-sm">
+                <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Payment schedule</p>
+                <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
+                  <InstallmentScheduleTable installments={installments} currency={cur} compact />
+                </div>
+              </div>
+            ) : null}
+
             {isInvoice && payments.length > 0 ? (
               <div className="text-sm">
                 <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Payments received</p>
@@ -265,10 +279,12 @@ export default async function PublicInvoicePage({ params }: PageProps<"/i/[token
             {canPayOnline ? (
               <div className="flex flex-col gap-3 rounded-lg bg-primary/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="font-medium">Pay online</p>
-                  <p className="text-muted-foreground">UPI, QR code, cards, net banking and wallets, processed securely by Razorpay.</p>
+                  <p className="font-medium">{nextInstallment ? `Pay ${installmentLabel(nextInstallment.sequence, installments.length).toLowerCase()}` : "Pay online"}</p>
+                  <p className="text-muted-foreground">
+                    {nextInstallment ? `Due ${formatDate(nextInstallment.dueDate)}. ` : ""}UPI, QR code, cards, net banking and wallets, processed securely by Razorpay.
+                  </p>
                 </div>
-                <PayNowButton token={token} amountLabel={formatCurrency(invoice.balanceDue, cur)} />
+                <PayNowButton token={token} amountLabel={formatCurrency(payNowAmount, cur)} />
               </div>
             ) : null}
 

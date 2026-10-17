@@ -14,10 +14,10 @@ import { failure, validationFailure } from "./utils";
 
 function revalidateRecurring(id?: string) {
   revalidatePath("/dashboard");
-  revalidatePath("/dashboard/recurring");
+  revalidatePath("/dashboard/scheduled");
   revalidatePath("/dashboard/invoices");
   revalidatePath("/dashboard/notifications");
-  if (id) revalidatePath(`/dashboard/recurring/${id}`);
+  if (id) revalidatePath(`/dashboard/scheduled/${id}`);
 }
 
 export async function createRecurringAction(invoiceId: string, input: RecurringScheduleInput): Promise<ActionResult> {
@@ -33,7 +33,7 @@ export async function createRecurringAction(invoiceId: string, input: RecurringS
     return failure(error, "Could not create the schedule.");
   }
   revalidateRecurring(id);
-  redirect(`/dashboard/recurring/${id}`);
+  redirect(`/dashboard/scheduled/${id}`);
 }
 
 export async function updateRecurringAction(id: string, input: RecurringScheduleInput): Promise<ActionResult> {
@@ -46,7 +46,7 @@ export async function updateRecurringAction(id: string, input: RecurringSchedule
     return failure(error, "Could not update the schedule.");
   }
   revalidateRecurring(id);
-  redirect(`/dashboard/recurring/${id}`);
+  redirect(`/dashboard/scheduled/${id}`);
 }
 
 export async function setRecurringStatusAction(id: string, status: RecurringStatus): Promise<ActionResult> {
@@ -81,5 +81,5 @@ export async function deleteRecurringAction(id: string): Promise<ActionResult> {
     return failure(error);
   }
   revalidateRecurring();
-  redirect("/dashboard/recurring");
+  redirect("/dashboard/scheduled");
 }

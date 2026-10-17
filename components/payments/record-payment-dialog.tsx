@@ -32,13 +32,15 @@ interface RecordPaymentDialogProps {
   invoiceId: string;
   currency: string;
   balanceDue: string;
+  /** Pre-fills the amount with the next installment instead of the full balance. */
+  suggested?: { amount: string; label: string } | null;
 }
 
-export function RecordPaymentDialog({ invoiceId, currency, balanceDue }: RecordPaymentDialogProps) {
+export function RecordPaymentDialog({ invoiceId, currency, balanceDue, suggested }: RecordPaymentDialogProps) {
   const [open, setOpen] = useState(false);
   const form = useForm<PaymentFormInput, unknown, PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
-    defaultValues: { invoiceId, amount: balanceDue, paymentDate: todayIso(), method: "bank_transfer", reference: "", notes: "" },
+    defaultValues: { invoiceId, amount: suggested?.amount ?? balanceDue, paymentDate: todayIso(), method: "bank_transfer", reference: "", notes: "" },
   });
   const { errors, isSubmitting } = form.formState;
 
@@ -62,7 +64,10 @@ export function RecordPaymentDialog({ invoiceId, currency, balanceDue }: RecordP
         <form onSubmit={onSubmit} noValidate>
           <DialogHeader>
             <DialogTitle>Record a payment</DialogTitle>
-            <DialogDescription>Outstanding balance: {formatCurrency(balanceDue, currency)}</DialogDescription>
+            <DialogDescription>
+              Outstanding balance: {formatCurrency(balanceDue, currency)}
+              {suggested ? ` · ${suggested.label}: ${formatCurrency(suggested.amount, currency)}` : ""}
+            </DialogDescription>
           </DialogHeader>
           <FieldGroup className="my-5">
             <div className="grid gap-4 sm:grid-cols-2">

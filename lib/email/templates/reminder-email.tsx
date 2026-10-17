@@ -10,8 +10,13 @@ export interface ReminderEmailProps {
   dueDate: string;
   /** Positive when past due, zero or negative when still within terms. */
   daysOverdue: number;
+  /** Amount this reminder asks for: the next installment when there is a plan, otherwise the balance. */
   balanceFormatted: string;
   totalFormatted: string;
+  /** "Installment 3 of 12" when the invoice has an installment plan. */
+  installmentLabel?: string;
+  /** Whole invoice balance, shown alongside the installment amount. */
+  invoiceBalanceFormatted?: string;
   viewUrl?: string;
   message?: string;
   bankDetails?: string | null;
@@ -24,14 +29,17 @@ export function reminderSubject(props: Pick<ReminderEmailProps, "invoiceNumber" 
 }
 
 function intro(props: ReminderEmailProps): string {
+  const subject = props.installmentLabel
+    ? `${props.installmentLabel.toLowerCase()} of invoice ${props.invoiceNumber} (${props.balanceFormatted})`
+    : `invoice ${props.invoiceNumber} for ${props.balanceFormatted}`;
   if (props.daysOverdue > 0) {
-    return `This is a friendly reminder that invoice ${props.invoiceNumber} for ${props.balanceFormatted} was due on ${props.dueDate} and is now ${props.daysOverdue} day${props.daysOverdue === 1 ? "" : "s"} overdue.`;
+    return `This is a friendly reminder that ${subject} was due on ${props.dueDate} and is now ${props.daysOverdue} day${props.daysOverdue === 1 ? "" : "s"} overdue.`;
   }
   if (props.daysOverdue === 0) {
-    return `This is a friendly reminder that invoice ${props.invoiceNumber} for ${props.balanceFormatted} is due today.`;
+    return `This is a friendly reminder that ${subject} is due today.`;
   }
   const daysLeft = -props.daysOverdue;
-  return `This is a friendly reminder that invoice ${props.invoiceNumber} for ${props.balanceFormatted} is due in ${daysLeft} day${daysLeft === 1 ? "" : "s"}, on ${props.dueDate}.`;
+  return `This is a friendly reminder that ${subject} is due in ${daysLeft} day${daysLeft === 1 ? "" : "s"}, on ${props.dueDate}.`;
 }
 
 export function ReminderEmail(props: ReminderEmailProps) {
@@ -47,8 +55,14 @@ export function ReminderEmail(props: ReminderEmailProps) {
           <Text style={styles.text}>If you have already paid, please ignore this email. Otherwise, the invoice PDF is attached for your reference.</Text>
 
           <Section>
-            <Text style={styles.label}>Amount due</Text>
+            <Text style={styles.label}>{props.installmentLabel ? `${props.installmentLabel} due` : "Amount due"}</Text>
             <Text style={styles.value}>{props.balanceFormatted}</Text>
+            {props.invoiceBalanceFormatted ? (
+              <>
+                <Text style={styles.label}>Invoice balance</Text>
+                <Text style={styles.value}>{props.invoiceBalanceFormatted}</Text>
+              </>
+            ) : null}
             <Text style={styles.label}>Invoice total</Text>
             <Text style={styles.value}>{props.totalFormatted}</Text>
             <Text style={styles.label}>Issued</Text>
@@ -89,7 +103,8 @@ export function reminderEmailText(props: ReminderEmailProps): string {
     props.message?.trim() || intro(props),
     "If you have already paid, please ignore this email.",
     "",
-    `Amount due: ${props.balanceFormatted}`,
+    `${props.installmentLabel ? `${props.installmentLabel} due` : "Amount due"}: ${props.balanceFormatted}`,
+    props.invoiceBalanceFormatted ? `Invoice balance: ${props.invoiceBalanceFormatted}` : "",
     `Invoice total: ${props.totalFormatted}`,
     `Issued: ${props.issueDate}`,
     `Due: ${props.dueDate}`,

@@ -9,6 +9,7 @@ import { notifyInvoiceEvent } from "@/lib/data/notifications";
 import { db } from "@/lib/db";
 import { todayIso } from "@/lib/fiscal-year";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { installmentLabel, installmentOutstanding, nextUnpaidInstallment } from "@/lib/installments";
 import { pdfFileName, renderInvoicePdf } from "@/lib/pdf/render";
 
 import { getEmailProvider } from "./provider";
@@ -37,6 +38,8 @@ export async function sendReminderEmail(businessId: string, invoiceId: string, o
   const to = (options.to ?? client.email ?? "").trim().toLowerCase();
   if (!to) throw new Error("The client has no email address. Add one to the client or enter a recipient.");
 
+  // With an installment plan the reminder is about the next installment, not the whole balance.
+  const nextInstallment = nextUnpaidInstallment(detail.installments);
   const props: ReminderEmailProps = {
     businessName: business.name,
     clientName: client.contactName || client.name,
@@ -44,8 +47,10 @@ export async function sendReminderEmail(businessId: string, invoiceId: string, o
     issueDate: formatDate(invoice.issueDate),
     dueDate: formatDate(invoice.dueDate),
     daysOverdue: daysBetween(invoice.dueDate, todayIso()),
-    balanceFormatted: formatCurrency(invoice.balanceDue, invoice.currency),
+    balanceFormatted: formatCurrency(nextInstallment ? installmentOutstanding(nextInstallment) : invoice.balanceDue, invoice.currency),
     totalFormatted: formatCurrency(invoice.total, invoice.currency),
+    installmentLabel: nextInstallment ? installmentLabel(nextInstallment.sequence, detail.installments.length) : undefined,
+    invoiceBalanceFormatted: nextInstallment ? formatCurrency(invoice.balanceDue, invoice.currency) : undefined,
     viewUrl: publicInvoiceUrl(invoice.publicToken),
     message: options.message,
     bankDetails: business.bankDetails,

@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { RecurringForm } from "@/components/recurring/recurring-form";
+import { RecurringForm } from "@/components/scheduled/recurring-form";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireUser } from "@/lib/auth/current-user";
 import { getRecurringProfile } from "@/lib/data/recurring";
 import { calculateInvoice } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/format";
 
-export const metadata: Metadata = { title: "Edit recurring schedule" };
+export const metadata: Metadata = { title: "Edit scheduled invoice" };
 
-export default async function EditRecurringPage({ params }: PageProps<"/dashboard/recurring/[id]/edit">) {
+export default async function EditRecurringPage({ params }: PageProps<"/dashboard/scheduled/[id]/edit">) {
   const { business } = await requireUser();
   const { id } = await params;
   const profile = await getRecurringProfile(business.id, id);
